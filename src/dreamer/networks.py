@@ -52,10 +52,82 @@ class MLP(nn.Module):
         return self.net(x)
 
 
+# ------------------------------------------------------------- component registries
+# Pluggable Dreamer components. Subclass a base (it auto-registers), implement
+# ``from_config``, and select it by name via DreamerConfig (e.g. cfg.encoder="ConvEncoder").
+# Adding a new world-model piece needs no changes to the agent — just a new subclass.
+
+ENCODER_REGISTRY: dict[str, type] = {}
+DECODER_REGISTRY: dict[str, type] = {}
+DYNAMICS_REGISTRY: dict[str, type] = {}
+ACTOR_REGISTRY: dict[str, type] = {}
+CRITIC_REGISTRY: dict[str, type] = {}
+
+
+class Encoder(nn.Module):
+    """Base class for observation encoders (auto-registers subclasses)."""
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        ENCODER_REGISTRY[cls.__name__] = cls
+
+    @classmethod
+    def from_config(cls, cfg: Any) -> Encoder:
+        raise NotImplementedError
+
+
+class Decoder(nn.Module):
+    """Base class for observation decoders (reconstruct obs from latent feat)."""
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        DECODER_REGISTRY[cls.__name__] = cls
+
+    @classmethod
+    def from_config(cls, cfg: Any, feat_dim: int) -> Decoder:
+        raise NotImplementedError
+
+
+class Dynamics(nn.Module):
+    """Base class for latent dynamics models (the world-model core, e.g. RSSM)."""
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        DYNAMICS_REGISTRY[cls.__name__] = cls
+
+    @classmethod
+    def from_config(cls, cfg: Any, embed_dim: int) -> Dynamics:
+        raise NotImplementedError
+
+
+class ActorBase(nn.Module):
+    """Base class for policies trained in imagination."""
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        ACTOR_REGISTRY[cls.__name__] = cls
+
+    @classmethod
+    def from_config(cls, cfg: Any, feat_dim: int) -> ActorBase:
+        raise NotImplementedError
+
+
+class CriticBase(nn.Module):
+    """Base class for value functions trained in imagination."""
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        CRITIC_REGISTRY[cls.__name__] = cls
+
+    @classmethod
+    def from_config(cls, cfg: Any, feat_dim: int) -> CriticBase:
+        raise NotImplementedError
+
+
 # ---------------------------------------------------------------------- encoders
 
 
-class ConvEncoder(nn.Module):
+class ConvEncoder(Encoder):
     """Maps a 64x64 image to a flat embedding via four stride-2 conv layers."""
 
     def __init__(self, channels: int, depth: int = 32) -> None:
@@ -77,8 +149,12 @@ class ConvEncoder(nn.Module):
         h = self.net(x)
         return h.reshape(h.shape[0], -1)
 
+    @classmethod
+    def from_config(cls, cfg: Any) -> ConvEncoder:
+        return cls(cfg.obs_shape[2], depth=cfg.cnn_depth)
 
-class MLPEncoder(nn.Module):
+
+class MLPEncoder(Encoder):
     """Maps a (symlog) vector observation to an embedding."""
 
     def __init__(self, obs_dim: int, hidden: int = 256, layers: int = 2) -> None:
@@ -89,11 +165,15 @@ class MLPEncoder(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.net(x)
 
+    @classmethod
+    def from_config(cls, cfg: Any) -> MLPEncoder:
+        return cls(cfg.obs_shape[0], hidden=cfg.hidden, layers=cfg.mlp_layers)
+
 
 # ---------------------------------------------------------------------- decoders
 
 
-class ConvDecoder(nn.Module):
+class ConvDecoder(Decoder):
     """Reconstructs a 64x64 image from the latent feature vector."""
 
     def __init__(self, feat_dim: int, channels: int, depth: int = 32) -> None:
@@ -115,8 +195,12 @@ class ConvDecoder(nn.Module):
         h = self.fc(feat).reshape(-1, 8 * self.depth, 4, 4)
         return self.net(h)
 
+    @classmethod
+    def from_config(cls, cfg: Any, feat_dim: int) -> ConvDecoder:
+        return cls(feat_dim, cfg.obs_shape[2], depth=cfg.cnn_depth)
 
-class MLPDecoder(nn.Module):
+
+class MLPDecoder(Decoder):
     """Reconstructs a (symlog) vector observation from the latent feature vector."""
 
     def __init__(self, feat_dim: int, obs_dim: int, hidden: int = 256, layers: int = 2) -> None:
@@ -126,11 +210,15 @@ class MLPDecoder(nn.Module):
     def forward(self, feat: torch.Tensor) -> torch.Tensor:
         return self.net(feat)
 
+    @classmethod
+    def from_config(cls, cfg: Any, feat_dim: int) -> MLPDecoder:
+        return cls(feat_dim, cfg.obs_shape[0], hidden=cfg.hidden, layers=cfg.mlp_layers)
+
 
 # -------------------------------------------------------------------------- RSSM
 
 
-class RSSM(nn.Module):
+class RSSM(Dynamics):
     """Recurrent State-Space Model with categorical stochastic latents (DreamerV3)."""
 
     def __init__(
@@ -223,6 +311,17 @@ class RSSM(nn.Module):
         post = {"deter": prior["deter"], "stoch": stoch, "logits": logits}
         return post, prior
 
+    @classmethod
+    def from_config(cls, cfg: Any, embed_dim: int) -> RSSM:
+        return cls(
+            action_dim=cfg.action_dim,
+            embed_dim=embed_dim,
+            deter_dim=cfg.deter_dim,
+            num_categoricals=cfg.num_categoricals,
+            num_classes=cfg.num_classes,
+            hidden=cfg.hidden,
+        )
+
 
 # --------------------------------------------------------------------------- heads
 
@@ -272,7 +371,7 @@ class SquashedNormal:
         return self.base.entropy().sum(-1)
 
 
-class Actor(nn.Module):
+class Actor(ActorBase):
     """Policy over the latent feature: one-hot categorical (discrete) or squashed
     Gaussian (continuous)."""
 
@@ -305,8 +404,18 @@ class Actor(nn.Module):
         std = self.min_std + (self.max_std - self.min_std) * torch.sigmoid(std)
         return SquashedNormal(mean, std)
 
+    @classmethod
+    def from_config(cls, cfg: Any, feat_dim: int) -> Actor:
+        return cls(
+            feat_dim,
+            cfg.action_dim,
+            discrete=cfg.is_discrete,
+            hidden=cfg.hidden,
+            layers=cfg.mlp_layers,
+        )
 
-class Critic(nn.Module):
+
+class Critic(CriticBase):
     """Two-hot symlog value function over the latent feature."""
 
     def __init__(self, feat_dim: int, hidden: int = 256, layers: int = 2, num_bins: int = 255):
@@ -315,3 +424,7 @@ class Critic(nn.Module):
 
     def forward(self, feat: torch.Tensor) -> TwoHotSymlog:
         return TwoHotSymlog(self.net(feat))
+
+    @classmethod
+    def from_config(cls, cfg: Any, feat_dim: int) -> Critic:
+        return cls(feat_dim, hidden=cfg.hidden, layers=cfg.mlp_layers)

@@ -12,15 +12,13 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from dreamer.networks import (
-    Actor,
+    ACTOR_REGISTRY,
+    CRITIC_REGISTRY,
+    DECODER_REGISTRY,
+    DYNAMICS_REGISTRY,
+    ENCODER_REGISTRY,
     ContinueHead,
-    ConvDecoder,
-    ConvEncoder,
-    Critic,
-    MLPDecoder,
-    MLPEncoder,
     RewardHead,
-    RSSM,
 )
 from dreamer.utils import categorical_kl, lambda_return, symexp, symlog
 
@@ -43,6 +41,13 @@ class DreamerConfig:
     cnn_depth: int = 32
     hidden: int = 256
     mlp_layers: int = 2
+
+    # Pluggable component selection by registry name (empty = auto-pick by modality).
+    encoder: str = ""
+    decoder: str = ""
+    dynamics: str = ""
+    actor: str = ""
+    critic: str = ""
 
     # Loss weights / KL.
     beta_pred: float = 1.0
@@ -79,31 +84,20 @@ class WorldModel(nn.Module):
         super().__init__()
         self.cfg = cfg
 
-        if cfg.is_image:
-            channels = cfg.obs_shape[2]
-            self.encoder: nn.Module = ConvEncoder(channels, depth=cfg.cnn_depth)
-            embed_dim = self.encoder.embed_dim
-        else:
-            obs_dim = cfg.obs_shape[0]
-            self.encoder = MLPEncoder(obs_dim, hidden=cfg.hidden, layers=cfg.mlp_layers)
-            embed_dim = self.encoder.embed_dim
+        # Build pluggable components from the registries. Names come from cfg; an
+        # empty selection falls back to the modality-appropriate default. Order
+        # matters: the dynamics needs the encoder's embed_dim, the decoder needs
+        # the dynamics' feat_dim.
+        enc_name = getattr(cfg, "encoder", "") or ("ConvEncoder" if cfg.is_image else "MLPEncoder")
+        self.encoder = ENCODER_REGISTRY[enc_name].from_config(cfg)
+        embed_dim = self.encoder.embed_dim
 
-        self.rssm = RSSM(
-            action_dim=cfg.action_dim,
-            embed_dim=embed_dim,
-            deter_dim=cfg.deter_dim,
-            num_categoricals=cfg.num_categoricals,
-            num_classes=cfg.num_classes,
-            hidden=cfg.hidden,
-        )
+        dyn_name = getattr(cfg, "dynamics", "") or "RSSM"
+        self.rssm = DYNAMICS_REGISTRY[dyn_name].from_config(cfg, embed_dim)
         feat_dim = self.rssm.feat_dim
 
-        if cfg.is_image:
-            self.decoder: nn.Module = ConvDecoder(feat_dim, cfg.obs_shape[2], depth=cfg.cnn_depth)
-        else:
-            self.decoder = MLPDecoder(
-                feat_dim, cfg.obs_shape[0], hidden=cfg.hidden, layers=cfg.mlp_layers
-            )
+        dec_name = getattr(cfg, "decoder", "") or ("ConvDecoder" if cfg.is_image else "MLPDecoder")
+        self.decoder = DECODER_REGISTRY[dec_name].from_config(cfg, feat_dim)
 
         self.reward_head = RewardHead(feat_dim, hidden=cfg.hidden, layers=cfg.mlp_layers)
         self.continue_head = ContinueHead(feat_dim, hidden=cfg.hidden, layers=cfg.mlp_layers)
@@ -223,14 +217,10 @@ class Dreamer(nn.Module):
         self.cfg = cfg
         self.wm = WorldModel(cfg)
         feat_dim = self.wm.rssm.feat_dim
-        self.actor = Actor(
-            feat_dim,
-            cfg.action_dim,
-            discrete=cfg.is_discrete,
-            hidden=cfg.hidden,
-            layers=cfg.mlp_layers,
-        )
-        self.critic = Critic(feat_dim, hidden=cfg.hidden, layers=cfg.mlp_layers)
+        actor_name = getattr(cfg, "actor", "") or "Actor"
+        self.actor = ACTOR_REGISTRY[actor_name].from_config(cfg, feat_dim)
+        critic_name = getattr(cfg, "critic", "") or "Critic"
+        self.critic = CRITIC_REGISTRY[critic_name].from_config(cfg, feat_dim)
         self.slow_critic = copy.deepcopy(self.critic)
         for p in self.slow_critic.parameters():
             p.requires_grad_(False)
@@ -355,7 +345,9 @@ class Dreamer(nn.Module):
     @torch.no_grad()
     def update_slow_critic(self) -> None:
         tau = self.cfg.slow_critic_tau
-        for slow, fast in zip(self.slow_critic.parameters(), self.critic.parameters()):
+        for slow, fast in zip(
+            self.slow_critic.parameters(), self.critic.parameters(), strict=False
+        ):
             slow.data.mul_(1 - tau).add_(fast.data, alpha=tau)
 
     # -------------------------------------------------------------- save / load
@@ -364,7 +356,7 @@ class Dreamer(nn.Module):
         torch.save({"state_dict": self.state_dict(), "config": self.cfg}, path)
 
     @staticmethod
-    def load(path: Path, device: torch.device) -> "Dreamer":
+    def load(path: Path, device: torch.device) -> Dreamer:
         ckpt = torch.load(path, weights_only=False, map_location=device)
         model = Dreamer(ckpt["config"]).to(device)
         model.load_state_dict(ckpt["state_dict"])

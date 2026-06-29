@@ -76,7 +76,7 @@ def _card(lines, highlight_idx=None, hold=40) -> list[np.ndarray]:
     """A full-frame text card, repeated ``hold`` times so it lingers in the video."""
     canvas = np.full((H, W, 3), 18, dtype=np.uint8)
     y = 46
-    for i, (text, scale, color) in enumerate(lines):
+    for text, scale, color in lines:
         _label(canvas, text, (28, y), scale, color, thick=2 if scale >= 0.9 else 1)
         y += int(38 * scale) + 18
     return [canvas.copy() for _ in range(hold)]
@@ -168,7 +168,7 @@ def record_tests(
     summary = [(f"RESULTS  -  {mode}", 0.8, (120, 255, 160))]
     summary += [
         (f"Test {i + 1} (seed {s}):  {r:7.1f}", 0.55, (255, 255, 255))
-        for i, (s, r) in enumerate(zip(seeds, returns))
+        for i, (s, r) in enumerate(zip(seeds, returns, strict=False))
     ]
     summary += [
         (f"mean {mean:.0f} +/- {std:.0f}    best {best:.0f}", 0.7, (120, 255, 160)),
