@@ -1,11 +1,12 @@
 from typing import Any, cast
 import torch
+import torch.nn.functional as F
 
 from memory import MemoryModel
 
 
 class TemporalTransformer(MemoryModel):
-    tags: list[str] = []
+    tags: frozenset = frozenset()
 
     def __init__(
         self,
@@ -15,6 +16,8 @@ class TemporalTransformer(MemoryModel):
         nhead: int = 8,
         num_layers: int = 4,
         max_len: int = 32,
+        cpc_temperature: float = 0.07,
+        **_kwargs: Any,
     ) -> None:
         super().__init__()
 
@@ -27,6 +30,7 @@ class TemporalTransformer(MemoryModel):
         self.nhead = nhead
         self.num_layers = num_layers
         self.max_len = max_len
+        self.cpc_temperature = cpc_temperature
 
         self.memory_input_proj = torch.nn.Linear(self.input_dim, d_model)
 
@@ -38,6 +42,11 @@ class TemporalTransformer(MemoryModel):
         self.transformer = torch.nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
 
         self.output_proj = torch.nn.Linear(d_model, latent_dim)
+
+        # CPC head: projects h_t to a prediction of z_{t+1} for InfoNCE training.
+        # Kept as a separate projection from output_proj so the MSE and CPC objectives
+        # can learn independent projections.
+        self.cpc_head = torch.nn.Linear(d_model, latent_dim)
 
         self.seq_buffer = None
         self.seq_lengths = None
@@ -109,7 +118,40 @@ class TemporalTransformer(MemoryModel):
         self.seq_buffer[env_idx].zero_()
         self.seq_lengths[env_idx] = 0
 
-    def export_hyperparams(self) -> dict[str, int]:
+    def compute_cpc_loss(self, h_t: torch.Tensor, z_next: torch.Tensor) -> torch.Tensor:
+        """
+        InfoNCE (CPC) loss: the transformer's hidden state h_t should predict z_{t+1}.
+
+        Uses a symmetric InfoNCE objective — the correct (h_t, z_{t+1}) pair is the
+        positive sample; all other pairs within the batch are negatives.
+
+        Requires batch_size >= 2; returns zero for smaller batches.
+
+        Args:
+            h_t:    Hidden state from update_memory (B, d_model).
+            z_next: Actual next latent from the vision encoder (B, latent_dim).
+
+        Returns:
+            Scalar InfoNCE loss.
+        """
+        B = h_t.size(0)
+        if B < 2:
+            return torch.tensor(0.0, device=h_t.device)
+
+        predictions = self.cpc_head(h_t)  # (B, latent_dim)
+
+        # L2-normalise both sides for cosine similarity
+        pred = F.normalize(predictions, dim=-1)
+        target = F.normalize(z_next, dim=-1)
+
+        # (B, B) similarity matrix; diagonal = positive pair
+        logits = pred @ target.T / self.cpc_temperature
+
+        labels = torch.arange(B, device=h_t.device)
+        loss = (F.cross_entropy(logits, labels) + F.cross_entropy(logits.T, labels)) / 2
+        return loss
+
+    def export_hyperparams(self) -> dict[str, Any]:
         return {
             "latent_dim": self.latent_dim,
             "action_dim": self.action_dim,
@@ -117,6 +159,7 @@ class TemporalTransformer(MemoryModel):
             "nhead": self.nhead,
             "num_layers": self.num_layers,
             "max_len": self.max_len,
+            "cpc_temperature": self.cpc_temperature,
         }
 
     def save_state(self) -> dict[str, torch.Tensor]:

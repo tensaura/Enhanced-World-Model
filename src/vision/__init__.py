@@ -27,7 +27,7 @@ class VisionModel(Model):
     @abstractmethod
     def forward(
         self, input: torch.Tensor, *args: Any, **kwargs: Any
-    ) -> tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Full forward pass: encode and decode observation.
 
@@ -37,8 +37,10 @@ class VisionModel(Model):
                    - Vectors: (B, D)
 
         Returns:
-            reconstruction: Reconstructed observation, same shape as input
-            loss: Reconstruction/VQ loss for training, shape (1,) or scalar
+            reconstruction: Reconstructed observation (or latent prediction for JEPA),
+                            same shape as input
+            z: Encoded latent representation (spatial for images: (B, embed_dim, H', W'))
+            loss: Reconstruction/VQ/VICReg loss for training, scalar
         """
         pass
 

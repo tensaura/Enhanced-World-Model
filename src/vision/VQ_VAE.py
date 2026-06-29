@@ -213,11 +213,11 @@ class VQ_VAE(VisionModel):
             ),  # → 128x128
         )
 
-    def forward(self, input: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, input: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         z_e = self.encoder(input)
         z_q, vq_loss, _ = self.vq(z_e)
         x_recon = self.decoder(z_q)
-        return x_recon, vq_loss
+        return x_recon, z_q, vq_loss
 
     def encode(self, input: torch.Tensor, is_image_based: bool) -> torch.Tensor:
         z_e = self.encoder(input)

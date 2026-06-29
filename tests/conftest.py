@@ -36,6 +36,18 @@ def main_input_args():
                 "--controller",
                 "DeepDiscreteController",
             ],
+            # Identity + RSSM: tests RSSM KL loss with a vector-based environment
+            [
+                "prog",
+                "--env",
+                "CartPole-v1",
+                "--vision",
+                "Identity",
+                "--memory",
+                "RSSM",
+                "--controller",
+                "DeepDiscreteController",
+            ],
             # ["prog", "--env", "CartPole-v1", "--vision", "Identity", "--memory", "LSTMMemory", "--controller", "DiscreteModelPredictiveController"],
             [
                 "prog",
@@ -45,6 +57,18 @@ def main_input_args():
                 "VQ_VAE",
                 "--memory",
                 "LSTMMemory",
+                "--controller",
+                "DeepContinuousController",
+            ],
+            # VAE + RSSM: tests both new modules end-to-end
+            [
+                "prog",
+                "--env",
+                "CarRacing-v3",
+                "--vision",
+                "VAE",
+                "--memory",
+                "RSSM",
                 "--controller",
                 "DeepContinuousController",
             ],

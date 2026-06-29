@@ -11,6 +11,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 from buffer import RolloutBuffer
 from WorldModel import WorldModel
+from utils.gym_tools import state_transform
 
 logging.basicConfig(
     level=logging.INFO,
@@ -18,14 +19,6 @@ logging.basicConfig(
     handlers=[logging.FileHandler("train.log", mode="w"), logging.StreamHandler()],
 )
 logger = logging.getLogger(__name__)
-
-
-def state_transform(state: np.ndarray, is_image_based: bool, device: torch.device) -> torch.Tensor:
-    """Transform numpy state to torch tensor."""
-    state_t = torch.from_numpy(state).float().to(device)
-    if is_image_based:
-        state_t = state_t.permute(0, 3, 1, 2) / 255.0
-    return state_t
 
 
 def train(
@@ -51,6 +44,8 @@ def train(
     # World model training
     train_world_model: bool = True,
     world_model_epochs: int = 1,
+    # Early stopping
+    patience: int = 0,  # 0 = disabled; stop after this many epochs without reward improvement
     # Logging & saving
     use_tensorboard: bool = True,
     save_path: Path = Path("./"),
@@ -118,6 +113,14 @@ def train(
     world_optimizer = torch.optim.Adam(world_params, lr=learning_rate)
     policy_optimizer = torch.optim.Adam(model.controller.parameters(), lr=policy_lr)
 
+    # Cosine-annealing LR schedulers — smoothly decay to lr/10 over the full run
+    world_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        world_optimizer, T_max=max(max_iter, 1), eta_min=learning_rate / 10
+    )
+    policy_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        policy_optimizer, T_max=max(max_iter, 1), eta_min=policy_lr / 10
+    )
+
     # Detect discrete vs continuous action space
     is_discrete = hasattr(action_space, "n")
     action_dim = action_space.n if is_discrete else action_space.shape[0]
@@ -157,6 +160,8 @@ def train(
     total_steps = 0
 
     best_reward = float("-inf")
+    best_mean_reward = float("-inf")
+    patience_counter = 0
 
     logger.info("=" * 60)
     logger.info("PPO Training")
@@ -170,6 +175,7 @@ def train(
     for epoch in range(max_iter):
         # ============ COLLECT ROLLOUT ============
         buffer.reset()
+        epoch_completed_rewards: list[float] = []  # episode rewards finishing in this rollout
 
         for _step in range(rollout_steps):
             state_tensor = state_transform(state, is_image_based, device)
@@ -188,9 +194,8 @@ def train(
                 log_prob = output_dict["log_probs"].squeeze(-1)
                 value = output_dict["value"].squeeze(-1)
 
-                # Get latent states for buffer
-                z_e = model.vision.encode(state_tensor, is_image_based=is_image_based)
-                z_t = z_e.mean(dim=(2, 3)) if is_image_based else z_e
+                # Reuse z_t already computed inside WorldModel.forward() — no extra encode pass.
+                z_t = output_dict["z_t"]
                 h_t = output_dict["memory_hidden"]
 
             # Step environment
@@ -229,11 +234,13 @@ def train(
             for env_idx in torch.where(done_t)[0]:
                 completed_episodes += 1
                 model.nb_experiments += 1
+                ep_reward = episode_rewards[env_idx].item()
+                epoch_completed_rewards.append(ep_reward)
 
                 if writer:
                     writer.add_scalar(
                         "rollout/episode_reward",
-                        episode_rewards[env_idx].item(),
+                        ep_reward,
                         completed_episodes,
                     )
                     writer.add_scalar(
@@ -242,9 +249,9 @@ def train(
                         completed_episodes,
                     )
 
-                # Track best
-                if episode_rewards[env_idx].item() > best_reward:
-                    best_reward = episode_rewards[env_idx].item()
+                # Track best single-episode reward
+                if ep_reward > best_reward:
+                    best_reward = ep_reward
 
                 episode_rewards[env_idx] = 0
                 episode_lengths[env_idx] = 0
@@ -363,10 +370,10 @@ def train(
                     else:
                         a_t = actions
 
-                    # Vision forward pass
-                    recon, vq_loss = model.vision(obs)
+                    # Vision forward pass (3-tuple: recon, z, loss)
+                    recon, _z_e, vq_loss = model.vision(obs)
 
-                    # Vision loss (reconstruction for VQ-VAE, or predictive for JEPA)
+                    # Vision loss (reconstruction for VQ-VAE/VAE, or predictive for JEPA)
                     if recon.shape == obs.shape:
                         vision_loss = torch.nn.functional.mse_loss(recon, obs)
                     else:
@@ -380,7 +387,17 @@ def train(
                     z_next_pred = model.memory.predict_next(z_t, a_t, h_t)
                     memory_loss = torch.nn.functional.mse_loss(z_next_pred, z_next_actual)
 
+                    # Extra memory loss (e.g. KL divergence for RSSM)
+                    extra_memory_loss = model.memory.get_extra_loss()
+
+                    # CPC (InfoNCE) auxiliary loss (e.g. TemporalTransformer)
+                    cpc_loss = model.memory.compute_cpc_loss(h_t, z_next_actual)
+
                     world_loss = vision_loss + vq_loss.mean() + memory_loss
+                    if extra_memory_loss is not None:
+                        world_loss = world_loss + extra_memory_loss
+                    if cpc_loss is not None:
+                        world_loss = world_loss + cpc_loss
 
                     # Only backprop if loss requires grad
                     if world_loss.requires_grad:
@@ -397,12 +414,37 @@ def train(
             avg_vision_loss /= max(wm_updates, 1)
             avg_memory_loss /= max(wm_updates, 1)
 
+        # ============ MEAN EPOCH REWARD + EARLY STOPPING ============
+        mean_epoch_reward = (
+            float(np.mean(epoch_completed_rewards)) if epoch_completed_rewards else float("nan")
+        )
+
+        if not np.isnan(mean_epoch_reward):
+            if mean_epoch_reward > best_mean_reward:
+                best_mean_reward = mean_epoch_reward
+                patience_counter = 0
+            else:
+                patience_counter += 1
+                if patience > 0 and patience_counter >= patience:
+                    logger.info(
+                        f"Early stopping at epoch {epoch}: "
+                        f"no reward improvement for {patience} consecutive epochs."
+                    )
+                    # Save a checkpoint before stopping
+                    model.save(save_path / "ppo_early_stop.pt", obs_space, action_space)
+                    break
+
+        # ============ LR SCHEDULER STEP ============
+        world_scheduler.step()
+        policy_scheduler.step()
+
         # ============ LOGGING ============
         if epoch % log_freq == 0:
             logger.info(
                 f"Epoch {epoch:4d} | "
                 f"Episodes: {completed_episodes:5d} | "
                 f"Best: {best_reward:7.1f} | "
+                f"MeanRew: {mean_epoch_reward:7.2f} | "
                 f"Policy: {avg_policy_loss:.4f} | "
                 f"Value: {avg_value_loss:.4f} | "
                 f"Entropy: {avg_entropy:.4f}"
@@ -416,9 +458,13 @@ def train(
             writer.add_scalar("train/vision_loss", avg_vision_loss, epoch)
             writer.add_scalar("train/memory_loss", avg_memory_loss, epoch)
             writer.add_scalar("train/total_steps", total_steps, epoch)
+            writer.add_scalar("train/mean_epoch_reward", mean_epoch_reward, epoch)
+            writer.add_scalar("train/lr_world", world_scheduler.get_last_lr()[0], epoch)
+            writer.add_scalar("train/lr_policy", policy_scheduler.get_last_lr()[0], epoch)
 
         # Record history
         history["epoch"].append(epoch)
+        history["reward"].append(mean_epoch_reward)
         history["policy_loss"].append(avg_policy_loss)
         history["value_loss"].append(avg_value_loss)
         history["entropy"].append(avg_entropy)

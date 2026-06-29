@@ -265,7 +265,7 @@ class JEPA(VisionModel):
 
         return loss, metrics
 
-    def forward(self, input: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, input: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Forward pass for training.
 
@@ -276,7 +276,8 @@ class JEPA(VisionModel):
             input: Input images (B, C, H, W)
 
         Returns:
-            z_pred: Predicted target embedding (for compatibility, not a reconstruction)
+            z_pred: Predicted target embedding (for compatibility, not a pixel reconstruction)
+            z_context: Context encoder output — the latent used downstream (B, embed_dim, H', W')
             loss: VICReg loss for training
         """
         # Encode with context encoder
@@ -296,9 +297,9 @@ class JEPA(VisionModel):
         if self.training:
             self._update_target_encoder()
 
-        # Return prediction as "reconstruction" for interface compatibility
-        # Note: This is NOT a pixel reconstruction - it's in latent space
-        return z_pred, loss
+        # Return prediction, context encoding, and loss
+        # z_context is the latent used for memory/controller; z_pred is in-latent-space "recon"
+        return z_pred, z_context, loss
 
     def encode(self, input: torch.Tensor, is_image_based: bool) -> torch.Tensor:
         """

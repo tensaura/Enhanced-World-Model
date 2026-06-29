@@ -12,6 +12,7 @@ from torch.utils.tensorboard.summary import hparams
 
 from manual_control import register_input
 from WorldModel import WorldModel, render_first_env
+from utils.gym_tools import state_transform
 
 
 class HyperSummaryWriter(SummaryWriter):
@@ -34,21 +35,6 @@ class HyperSummaryWriter(SummaryWriter):
             w_hp.file_writer.add_summary(sei)
             for k, v in metric_dict.items():
                 w_hp.add_scalar(k, v)
-
-
-def state_transform(state: np.ndarray, is_image_based: bool, device: torch.device) -> torch.Tensor:
-    if is_image_based:
-        # Transpose state from (H, W, C) to (C, H, W) for PyTorch
-        if state.ndim == 3:
-            state = state[None]
-        state_transposed = np.transpose(state, (0, 3, 1, 2))
-        state_tensor = torch.from_numpy(state_transposed).float().to(device)
-        # Normalize image data to [0, 1]
-        return state_tensor / 255.0
-    else:
-        if state.ndim == 1:
-            state = state[None]
-        return torch.from_numpy(state).float().to(device)
 
 
 def step(

@@ -48,11 +48,14 @@ def evaluate(
         steps = 0
         frames = []
 
-        # Reset model memory
+        # Reset model memory between episodes — covers all memory types:
+        #   LSTMMemory:          h_state, c_state
+        #   TemporalTransformer: seq_buffer, seq_lengths
+        #   RSSM:                h_state, z_state
         model.a_prev = None
-        if hasattr(model.memory, "h_state"):
-            model.memory.h_state = None
-            model.memory.c_state = None
+        for attr in ("h_state", "c_state", "z_state", "seq_buffer", "seq_lengths"):
+            if hasattr(model.memory, attr):
+                setattr(model.memory, attr, None)
 
         while not done:
             # Prepare observation

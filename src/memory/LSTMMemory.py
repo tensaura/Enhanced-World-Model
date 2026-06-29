@@ -17,7 +17,7 @@ class LSTMMemory(MemoryModel):
     - Designed for sequential processing
     """
 
-    tags: list[str] = []
+    tags: frozenset = frozenset()
 
     def __init__(
         self,

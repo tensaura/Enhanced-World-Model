@@ -143,3 +143,93 @@ on their respective environments.
 uv sync
 python src/main.py --env CartPole-v1 --render-mode human
 ```
+
+## DreamerV3-lite (latent imagination)
+
+The strongest agent in this repo is a compact, self-contained
+[DreamerV3](https://arxiv.org/pdf/2301.04104v1) implementation that trains the policy
+**inside an imagined latent world model** rather than with on-policy PPO. It lives in
+`src/dreamer/` and is selected with `--algo dreamer`.
+
+Why it succeeds on image environments like **CarRacing-v3** where the PPO path struggled:
+
+- **No spatial information is thrown away.** The PPO path mean-pooled the conv feature
+  map to a single vector; Dreamer keeps a full recurrent latent state.
+- **The recurrent state captures motion** (velocity, heading), so no frame-stacking
+  hacks are needed — a single resized 64×64 frame per step is enough.
+- **The policy learns by imagination.** The actor-critic is trained on thousands of
+  latent rollouts *dreamed* by the world model, decoupling policy learning from the
+  (initially noisy) representation.
+
+Architecture: a CNN/MLP **encoder**, a categorical **RSSM** (deterministic GRU state +
+discrete stochastic latents), a **decoder** + **reward** + **continue** heads, and an
+**actor-critic** trained on λ-returns over imagined trajectories. Robustness tricks from
+the paper are included: symlog two-hot reward/value heads, KL balancing with free bits,
+percentile return normalisation, an EMA target critic, and unimix categoricals.
+
+### Train
+
+Quick proof that the pipeline learns (vector env, a few minutes on CPU):
+
+```bash
+python src/main.py --algo dreamer --env CartPole-v1 \
+    --total-steps 20000 --action-repeat 1 --deter-dim 128 \
+    --seq-len 32 --dreamer-batch 16 --entropy-scale 1e-2
+```
+
+CarRacing proof run (~20 min on Apple-Silicon/MPS — world-model reconstructions become
+recognisable and reward starts trending up):
+
+```bash
+python src/main.py --algo dreamer --env CarRacing-v3 \
+    --total-steps 25000 --seq-len 32 --dreamer-batch 8 \
+    --deter-dim 256 --cnn-depth 32 --action-repeat 2
+```
+
+Full CarRacing run for a strong agent (~10 h overnight on Apple-Silicon/MPS). Measured
+throughput is ≈8.6 env-steps/s at `deter 256 / cnn 32 / batch 16 / seq 50`, so 300k steps
+fits a night; the `512`/`48` model scores higher but needs a multi-day budget on a Mac.
+
+```bash
+# `caffeinate -i -m -s` keeps macOS from idle/system-sleeping mid-run (which suspends
+# training); `-w <pid>` releases automatically when training exits. nohup detaches it so
+# it survives closing the terminal/app. Run via the standalone entry for the cleanest path.
+PYTHONPATH=src nohup uv run python src/dreamer/train.py \
+    --env CarRacing-v3 --total-steps 300000 --prefill 5000 \
+    --seq-len 50 --batch-size 16 --deter-dim 256 --cnn-depth 32 \
+    --train-every 5 --action-repeat 2 --entropy-scale 1.5e-3 --tensorboard \
+    > overnight_carracing.log 2>&1 &
+echo $! > overnight_carracing.pid
+nohup caffeinate -i -m -s -w "$(cat overnight_carracing.pid)" >/dev/null 2>&1 &
+```
+
+> **MacBook note:** `caffeinate` cannot override *clamshell* sleep — **keep the lid open**
+> (an external display + AC also works). For closed-lid training, run
+> `sudo pmset -c disablesleep 1` first (AC only) and `sudo pmset -c disablesleep 0` after.
+> Monitor with `tail -f overnight_carracing.log | grep "step "`; stop with
+> `kill $(cat overnight_carracing.pid)`.
+
+Resume from a checkpoint with `--load-path saved_models/dreamer_CarRacing-v3_step50000.pt`.
+Checkpoints (`dreamer_<env>_best.pt`, `_step<N>.pt`, `_final.pt`) are written to
+`--save-path` (default `./saved_models/`).
+
+### Hyperparameter guidance
+
+- `--entropy-scale`: continuous envs (CarRacing) want a small value (`1e-3`–`3e-4`);
+  discrete envs (CartPole) want more exploration (`1e-2`–`3e-2`).
+- `--deter-dim` / `--cnn-depth`: the main capacity knobs. `256`/`32` trains fast on a
+  Mac; `512`/`48` is closer to the paper's "small" model and scores higher given time.
+- `--seq-len` / `--dreamer-batch`: bigger is better for the world model but costs memory
+  and step time (≈0.2 s/step at `8`×`32`, ≈0.55 s/step at `16`×`50` on MPS).
+- `--train-every`: lower = higher replay ratio = more sample-efficient but slower wall-clock.
+
+### Record a demo video
+
+```bash
+PYTHONPATH=src uv run python src/dreamer/record_demo.py \
+    --checkpoint saved_models/dreamer_CarRacing-v3_final.pt \
+    --env CarRacing-v3 --episodes 3 --out demo/carracing
+```
+
+This writes `demo/carracing.mp4` (+ `.gif`) showing the agent driving next to the world
+model's decoded "dream" of each frame, with a live reward sparkline.
