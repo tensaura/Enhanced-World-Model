@@ -11,7 +11,6 @@ import controller
 import memory
 import vision
 from inference import evaluate
-from pretrain import pretrain
 from train import train
 from utils.cli import CLI
 from utils.gym_tools import auto_batch_size
@@ -102,10 +101,7 @@ def main() -> None:
     )
     parser.add_argument("--tensorboard", action="store_true", help="Enable tensorboard logging.")
 
-    # Pretraining args
-    parser.add_argument("--pretrain-vision", action="store_true")
-    parser.add_argument("--pretrain-memory", action="store_true")
-    parser.add_argument("--pretrain-mode", type=str, default="random", choices=["manual", "random"])
+    # Other args
     parser.add_argument(
         "--manual-mode-delay",
         type=float,
@@ -176,9 +172,7 @@ def main() -> None:
     parser.add_argument(
         "--train-every", type=int, default=5, help="[dreamer] Env steps between train steps."
     )
-    parser.add_argument(
-        "--seq-len", type=int, default=50, help="[dreamer] Replay sequence length."
-    )
+    parser.add_argument("--seq-len", type=int, default=50, help="[dreamer] Replay sequence length.")
     parser.add_argument(
         "--dreamer-batch", type=int, default=16, help="[dreamer] World-model batch size."
     )
@@ -239,17 +233,7 @@ def main() -> None:
         return
 
     try:
-        if args.pretrain_vision and args.pretrain_mode == "manual":
-            args.render_mode = "rgb_array"  # "human"
-        real_render_mode = args.render_mode
-        if (
-            args.render_mode == "human"
-        ):  # Temporary `if` as long as the rendering of the first env is done through cv2.
-            real_render_mode = "rgb_array"
-
-        envs = gym.make_vec(
-            args.env, num_envs=env_batch_size, render_mode=real_render_mode
-        )  # args.render_mode)
+        envs = gym.make_vec(args.env, num_envs=env_batch_size, render_mode=args.render_mode)
 
         log_messages: dict[str, list[str]] = {"info": [], "warning": [], "error": []}
         try:
@@ -302,35 +286,6 @@ def main() -> None:
             world_model.eval()
             evaluate(
                 world_model, args.env, num_episodes=args.episodes, render_mode=args.render_mode
-            )
-        elif args.pretrain_vision or args.pretrain_memory:
-            if not args.pretrain_vision:
-                for param in world_model.vision.parameters():
-                    param.requires_grad = False
-
-            if not args.pretrain_memory:
-                for param in world_model.memory.parameters():
-                    param.requires_grad = False
-
-            for param in world_model.controller.parameters():
-                param.requires_grad = False
-
-            save_prefix = (
-                "" + ("V" if args.pretrain_vision else "") + ("M" if args.pretrain_memory else "")
-            )
-            pretrain(
-                world_model,
-                envs,
-                max_iter=args.epochs,
-                device=device,
-                learning_rate=args.lr,
-                mode=args.pretrain_mode,
-                delay=args.manual_mode_delay,
-                save_path=args.save_path,
-                save_prefix=save_prefix,
-                pretrain_vision=args.pretrain_vision,
-                pretrain_memory=args.pretrain_memory,
-                render_mode=args.render_mode,
             )
         else:
             if args.load_path:

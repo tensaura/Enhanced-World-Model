@@ -296,20 +296,11 @@ def print_advanced_args(args: Namespace) -> None:
         "  - Save frequency": str(args.save_freq),
         "  - Log frequency": str(args.log_freq),
         "  - Tensorboard": bool_state[args.tensorboard],
-        "  - Pretrain vision": bool_state[args.pretrain_vision],
-        "  - Pretrain memory": bool_state[args.pretrain_memory],
-        "  - Pretraining mode": str(args.pretrain_mode),
     }
 
     cli_printer.dict_log(advanced_dict)
 
-    pretraining = args.pretrain_vision or args.pretrain_memory
-    state = (
-        "Training"
-        if not pretraining
-        else "Pretraining "
-        + " and ".join(["Vision", "Memory"][1 - args.pretrain_vision : 1 + args.pretrain_memory])
-    )
+    state = "Training"
     cli_printer.log(f"\n  State: {Style.MAGENTA}{state}", style=Style.CYAN)
 
 
@@ -342,9 +333,6 @@ def edit_advanced_args(
             "  - 5: Save frequency": str(args.save_freq),
             "  - 6: Log frequency": str(args.log_freq),
             "  - 7: Tensorboard": bool_state[args.tensorboard],
-            "  - 8: Pretrain vision": bool_state[args.pretrain_vision],
-            "  - 9: Pretrain memory": bool_state[args.pretrain_memory],
-            "  - 10: Pretraining mode": str(args.pretrain_mode),
             "  - x: : Back ": "",
         }
         cli_printer.dict_log(advanced_edit_dict)
@@ -419,31 +407,6 @@ def edit_advanced_args(
                     args.tensorboard = False
                 else:
                     cli_printer.error("Invalid input.")
-            case "8":
-                pretrain_vision = cli_printer.input("Pretrain vision model? (y/n): ")
-                if pretrain_vision.lower() == "y":
-                    args.pretrain_vision = True
-                elif pretrain_vision.lower() == "n":
-                    args.pretrain_vision = False
-                else:
-                    cli_printer.error("Invalid input.")
-            case "9":
-                pretrain_memory = cli_printer.input("Pretrain memory model? (y/n): ")
-                if pretrain_memory.lower() == "y":
-                    args.pretrain_memory = True
-                elif pretrain_memory.lower() == "n":
-                    args.pretrain_memory = False
-                else:
-                    cli_printer.error("Invalid input.")
-            case "10":
-                pretrain_dict = {"  - 0: ": "Random", "  - 1: ": "Manual"}
-                cli_printer.dict_log(pretrain_dict)
-                value = cli_printer.input("Choose new pretraining mode: ")
-                modes = ["random", "manual"]
-                if value.isdigit() and 0 <= int(value) < len(modes):
-                    args.pretrain_mode = modes[int(value)]
-                else:
-                    cli_printer.error("Invalid mode choice.")
             case "x":
                 break
             case _:
