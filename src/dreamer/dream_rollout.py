@@ -36,7 +36,9 @@ logger = logging.getLogger(__name__)
 PANEL = 256
 
 
-def _label(img: np.ndarray, text: str, org: tuple[int, int], color=(255, 255, 255)) -> None:
+def _label(
+    img: np.ndarray, text: str, org: tuple[int, int], color: tuple[int, int, int] = (255, 255, 255)
+) -> None:
     cv2.putText(img, text, org, cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 3, cv2.LINE_AA)
     cv2.putText(img, text, org, cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 1, cv2.LINE_AA)
 

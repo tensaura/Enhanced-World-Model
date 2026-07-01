@@ -16,4 +16,3 @@ imagination loop stays clean and faithful to the paper.
 # Importing this module registers the custom ``InvertedTriplePendulum-v0`` env with
 # Gymnasium so ``gym.make`` can find it from any entry point.
 from dreamer import triple_pendulum as triple_pendulum  # noqa: E402,F401
-

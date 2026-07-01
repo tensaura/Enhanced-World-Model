@@ -1,4 +1,4 @@
-from src.utils.registry import discover_modules
+from utils.registry import discover_modules
 
 MEMORY_REGISTRY = discover_modules("memory")
 

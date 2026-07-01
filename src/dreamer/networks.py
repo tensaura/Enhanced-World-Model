@@ -57,11 +57,11 @@ class MLP(nn.Module):
 # ``from_config``, and select it by name via DreamerConfig (e.g. cfg.encoder="ConvEncoder").
 # Adding a new world-model piece needs no changes to the agent — just a new subclass.
 
-ENCODER_REGISTRY: dict[str, type] = {}
-DECODER_REGISTRY: dict[str, type] = {}
-DYNAMICS_REGISTRY: dict[str, type] = {}
-ACTOR_REGISTRY: dict[str, type] = {}
-CRITIC_REGISTRY: dict[str, type] = {}
+ENCODER_REGISTRY: dict[str, type[Encoder]] = {}
+DECODER_REGISTRY: dict[str, type[Decoder]] = {}
+DYNAMICS_REGISTRY: dict[str, type[Dynamics]] = {}
+ACTOR_REGISTRY: dict[str, type[ActorBase]] = {}
+CRITIC_REGISTRY: dict[str, type[CriticBase]] = {}
 
 
 class Encoder(nn.Module):

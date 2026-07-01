@@ -103,6 +103,13 @@ markers = [
     "integration: marks tests as integration tests",
 ]
 
+[tool.pyright]
+extraPaths = ["src"]
+reportAny = false
+reportExplicitAny = false
+reportUnknownArgumentType = false
+reportUnknownMemberType = false
+
 [tool.coverage.run]
 source = ["src"]
 omit = [

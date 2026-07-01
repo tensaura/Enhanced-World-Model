@@ -8,12 +8,13 @@ import numpy as np
 import pytest
 import torch
 
-from src.buffer import RolloutBuffer
+from buffer import RolloutBuffer
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def make_buffer(
     buffer_size: int = 8,
@@ -56,6 +57,7 @@ def fill_buffer(buf: RolloutBuffer, reward_val: float = 1.0, done_val: bool = Fa
 # Creation & reset
 # ---------------------------------------------------------------------------
 
+
 def test_buffer_creation():
     buf = make_buffer()
     assert buf.ptr == 0
@@ -76,6 +78,7 @@ def test_buffer_reset():
 # add() and overflow guard
 # ---------------------------------------------------------------------------
 
+
 def test_buffer_fills_correctly():
     buf = make_buffer(buffer_size=4, num_envs=3)
     fill_buffer(buf, reward_val=2.0)
@@ -86,14 +89,14 @@ def test_buffer_fills_correctly():
 def test_buffer_discrete_action_shape():
     buf = make_buffer(buffer_size=4, action_dim=5, is_discrete=True)
     fill_buffer(buf)
-    assert buf.actions.shape == (4, 2)      # (buffer_size, num_envs)
+    assert buf.actions.shape == (4, 2)  # (buffer_size, num_envs)
     assert buf.actions.dtype == torch.long
 
 
 def test_buffer_continuous_action_shape():
     buf = make_buffer(buffer_size=4, action_dim=3, is_discrete=False)
     fill_buffer(buf)
-    assert buf.actions.shape == (4, 2, 3)   # (buffer_size, num_envs, action_dim)
+    assert buf.actions.shape == (4, 2, 3)  # (buffer_size, num_envs, action_dim)
 
 
 def test_latent_hidden_states_stored():
@@ -102,9 +105,12 @@ def test_latent_hidden_states_stored():
         obs = torch.zeros(2, 4)
         action = torch.zeros(2, 2)
         buf.add(
-            obs=obs, action=action,
-            reward=torch.ones(2), value=torch.ones(2),
-            log_prob=torch.full((2,), -0.5), done=torch.zeros(2, dtype=torch.bool),
+            obs=obs,
+            action=action,
+            reward=torch.ones(2),
+            value=torch.ones(2),
+            log_prob=torch.full((2,), -0.5),
+            done=torch.zeros(2, dtype=torch.bool),
             z_t=torch.ones(2, 8),
             h_t=torch.ones(2, 16),
             z_next=torch.ones(2, 8) * 2,
@@ -120,6 +126,7 @@ def test_latent_hidden_states_stored():
 # ---------------------------------------------------------------------------
 # GAE computation
 # ---------------------------------------------------------------------------
+
 
 def test_gae_no_dones():
     """
@@ -141,9 +148,9 @@ def test_gae_no_dones():
     assert (buf.advantages > 0).all(), f"All advantages should be > 0, got {buf.advantages}"
     # Earlier steps should have larger advantages (more future reward to accumulate)
     advs = buf.advantages[:, 0].tolist()
-    assert advs[0] > advs[1] > advs[2] > advs[3], (
-        f"Advantages should decrease over time, got {advs}"
-    )
+    assert (
+        advs[0] > advs[1] > advs[2] > advs[3]
+    ), f"Advantages should decrease over time, got {advs}"
 
 
 def test_gae_with_terminal():
@@ -153,9 +160,12 @@ def test_gae_with_terminal():
     for t in range(4):
         done = torch.tensor([t == 1], dtype=torch.bool)  # episode ends at step 1
         buf.add(
-            obs=torch.zeros(1, 4), action=torch.zeros(1, 2),
-            reward=torch.ones(1), value=torch.ones(1),
-            log_prob=torch.full((1,), -0.5), done=done,
+            obs=torch.zeros(1, 4),
+            action=torch.zeros(1, 2),
+            reward=torch.ones(1),
+            value=torch.ones(1),
+            log_prob=torch.full((1,), -0.5),
+            done=done,
         )
 
     buf.compute_gae(torch.zeros(1), torch.zeros(1, dtype=torch.bool))
@@ -177,6 +187,7 @@ def test_returns_equal_advantages_plus_values():
 # Batch generation
 # ---------------------------------------------------------------------------
 
+
 def test_get_batches_covers_all_data():
     buf = make_buffer(buffer_size=8, num_envs=4)
     fill_buffer(buf)
@@ -193,10 +204,15 @@ def test_get_batches_includes_latent_states():
     buf = make_buffer(buffer_size=4, num_envs=2)
     for _ in range(4):
         buf.add(
-            obs=torch.zeros(2, 4), action=torch.zeros(2, 2),
-            reward=torch.ones(2), value=torch.ones(2),
-            log_prob=torch.full((2,), -0.5), done=torch.zeros(2, dtype=torch.bool),
-            z_t=torch.ones(2, 8), h_t=torch.ones(2, 12), z_next=torch.ones(2, 8),
+            obs=torch.zeros(2, 4),
+            action=torch.zeros(2, 2),
+            reward=torch.ones(2),
+            value=torch.ones(2),
+            log_prob=torch.full((2,), -0.5),
+            done=torch.zeros(2, dtype=torch.bool),
+            z_t=torch.ones(2, 8),
+            h_t=torch.ones(2, 12),
+            z_next=torch.ones(2, 8),
         )
     buf.compute_gae(torch.ones(2), torch.zeros(2, dtype=torch.bool))
 

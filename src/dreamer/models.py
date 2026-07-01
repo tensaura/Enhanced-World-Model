@@ -358,6 +358,6 @@ class Dreamer(nn.Module):
     @staticmethod
     def load(path: Path, device: torch.device) -> Dreamer:
         ckpt = torch.load(path, weights_only=False, map_location=device)
-        model = Dreamer(ckpt["config"]).to(device)
+        model: Dreamer = Dreamer(ckpt["config"]).to(device)
         model.load_state_dict(ckpt["state_dict"])
         return model

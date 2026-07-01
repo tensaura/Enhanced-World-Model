@@ -21,6 +21,7 @@ import cv2
 import imageio.v2 as imageio
 import numpy as np
 import torch
+from typing import Any
 
 from dreamer.env import DreamerEnv
 from dreamer.models import Dreamer
@@ -33,16 +34,23 @@ SPARK_H = 90
 H = PANEL + SPARK_H  # composed frame height
 
 
-def _label(img, text, org, scale=0.6, color=(255, 255, 255), thick=1) -> None:
+def _label(
+    img: cv2.typing.MatLike,
+    text: str,
+    org: tuple[int, int],
+    scale: float = 0.6,
+    color: tuple[int, int, int] = (255, 255, 255),
+    thick: int = 1,
+) -> None:
     cv2.putText(img, text, org, cv2.FONT_HERSHEY_SIMPLEX, scale, (0, 0, 0), thick + 2, cv2.LINE_AA)
     cv2.putText(img, text, org, cv2.FONT_HERSHEY_SIMPLEX, scale, color, thick, cv2.LINE_AA)
 
 
-def _panel(rgb) -> np.ndarray:
+def _panel(rgb: cv2.typing.MatLike) -> np.ndarray:
     return cv2.resize(rgb, (PANEL, PANEL), interpolation=cv2.INTER_NEAREST)
 
 
-def _sparkline(history, width) -> np.ndarray:
+def _sparkline(history: list[float], width: int) -> np.ndarray:
     canvas = np.full((SPARK_H, width, 3), 20, dtype=np.uint8)
     if len(history) >= 2:
         lo, hi = min(history), max(history)
@@ -59,7 +67,16 @@ def _sparkline(history, width) -> np.ndarray:
     return canvas
 
 
-def _compose(real, recon, test_idx, n_tests, seed, step, ep_reward, history) -> np.ndarray:
+def _compose(
+    real: cv2.typing.MatLike,
+    recon: np.typing.NDArray[np.floating[Any]],
+    test_idx: int,
+    n_tests: int,
+    seed: int,
+    step: int,
+    ep_reward: float,
+    history: list[float],
+) -> cv2.typing.MatLike:
     left = _panel(real)
     _label(left, "environment", (8, 22))
     recon_u8 = (np.clip(recon, 0, 1) * 255).astype(np.uint8)
@@ -72,7 +89,11 @@ def _compose(real, recon, test_idx, n_tests, seed, step, ep_reward, history) -> 
     return frame
 
 
-def _card(lines, highlight_idx=None, hold=40) -> list[np.ndarray]:
+def _card(
+    lines: list[tuple[str, float, tuple[int, int, int]]],
+    _highlight_idx: int | None = None,
+    hold: int = 40,
+) -> list[np.ndarray]:
     """A full-frame text card, repeated ``hold`` times so it lingers in the video."""
     canvas = np.full((H, W, 3), 18, dtype=np.uint8)
     y = 46
@@ -82,10 +103,20 @@ def _card(lines, highlight_idx=None, hold=40) -> list[np.ndarray]:
     return [canvas.copy() for _ in range(hold)]
 
 
+PanelData = tuple[cv2.typing.MatLike, np.typing.NDArray[np.floating[Any]], int, float, list[float]]
+
+
 @torch.no_grad()
 def run_test(
-    agent, env_name, seed, device, action_repeat, stochastic, domain_randomize=False, max_steps=1000
-):
+    agent: Dreamer,
+    env_name: str,
+    seed: int,
+    device: torch.device,
+    action_repeat: int,
+    stochastic: bool,
+    domain_randomize: bool = False,
+    max_steps: int = 1000,
+) -> tuple[list[PanelData], float]:
     env_kwargs = {"domain_randomize": True} if domain_randomize else None
     env = DreamerEnv(
         env_name,
@@ -126,25 +157,25 @@ def run_test(
 
 @torch.no_grad()
 def record_tests(
-    checkpoint,
-    env_name,
-    tests,
-    out,
-    device,
-    action_repeat=2,
-    stochastic=False,
-    fps=30,
-    seed0=0,
-    domain_randomize=False,
-):
+    checkpoint: str | Path,
+    env_name: str,
+    tests: int,
+    out: str | Path,
+    device: torch.device,
+    action_repeat: int = 2,
+    stochastic: bool = False,
+    fps: int = 30,
+    seed0: int = 0,
+    domain_randomize: bool = False,
+) -> None:
     agent = Dreamer.load(Path(checkpoint), device)
     agent.eval()
     rng = np.random.default_rng(seed0)
-    seeds = [int(rng.integers(0, 100_000)) for _ in range(tests)]
+    seeds: list[int] = [int(rng.integers(0, 100_000)) for _ in range(tests)]
     mode = "random colors (domain randomize)" if domain_randomize else "random tracks"
     logger.info(f"Running {tests} tests | {mode} | seeds={seeds}")
 
-    frames: list[np.ndarray] = []
+    frames: list[cv2.typing.MatLike] = []
     frames += _card(
         [
             ("DreamerV3-lite  -  CarRacing-v3", 0.9, (120, 255, 160)),
@@ -160,7 +191,9 @@ def record_tests(
             agent, env_name, sd, device, action_repeat, stochastic, domain_randomize
         )
         returns.append(ep_reward)
-        logger.info(f"Test {k}/{tests} (seed {sd}): return {ep_reward:.1f} over {len(panels)} steps")
+        logger.info(
+            f"Test {k}/{tests} (seed {sd}): return {ep_reward:.1f} over {len(panels)} steps"
+        )
         for real, recon, step, r, hist in panels:
             frames.append(_compose(real, recon, k, tests, sd, step, r, hist))
 

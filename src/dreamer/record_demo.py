@@ -108,9 +108,7 @@ def record(
         while not done and steps < max_steps:
             obs_t = torch.as_tensor(obs, device=device).unsqueeze(0)
             is_first_t = torch.tensor([1.0 if is_first else 0.0], device=device)
-            action, state = agent.act(
-                obs_t, state, prev_action, is_first_t, training=stochastic
-            )
+            action, state = agent.act(obs_t, state, prev_action, is_first_t, training=stochastic)
 
             recon_img = None
             if env.is_image:

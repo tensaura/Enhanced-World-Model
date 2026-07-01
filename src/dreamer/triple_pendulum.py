@@ -9,8 +9,6 @@ Registered as ``InvertedTriplePendulum-v0`` on import. Observation is a 12-vecto
 1-D cart force in ``[-1, 1]``.
 """
 
-from __future__ import annotations
-
 import os
 
 import numpy as np
@@ -18,6 +16,7 @@ from gymnasium import utils
 from gymnasium.envs.mujoco import MujocoEnv
 from gymnasium.envs.registration import register, registry
 from gymnasium.spaces import Box
+from typing import Any
 
 _ASSET = os.path.join(os.path.dirname(__file__), "assets", "inverted_triple_pendulum.xml")
 
@@ -27,18 +26,18 @@ _FULL_HEIGHT = 1.8  # tip height when perfectly upright (3 links x 0.6 m)
 class InvertedTriplePendulumEnv(MujocoEnv, utils.EzPickle):
     """Balance a three-link inverted pendulum on a cart."""
 
-    metadata = {"render_modes": ["human", "rgb_array", "depth_array", "rgbd_tuple"]}
+    metadata: dict[str, Any] = {"render_modes": ["human", "rgb_array", "depth_array", "rgbd_tuple"]}
 
     def __init__(
         self,
         xml_file: str = _ASSET,
         frame_skip: int = 5,
-        default_camera_config: dict | None = None,
+        default_camera_config: dict[str, Any] | None = None,
         healthy_reward: float = 10.0,
         upright_weight: float = 3.0,
         term_height: float = 1.0,
         reset_noise_scale: float = 0.1,
-        **kwargs,
+        **kwargs: dict[str, Any],
     ) -> None:
         utils.EzPickle.__init__(
             self,
@@ -50,10 +49,10 @@ class InvertedTriplePendulumEnv(MujocoEnv, utils.EzPickle):
             reset_noise_scale,
             **kwargs,
         )
-        self._healthy_reward = healthy_reward
-        self._upright_weight = upright_weight
-        self._term_height = term_height
-        self._reset_noise_scale = reset_noise_scale
+        self._healthy_reward: float = healthy_reward
+        self._upright_weight: float = upright_weight
+        self._term_height: float = term_height
+        self._reset_noise_scale: float = reset_noise_scale
 
         observation_space = Box(low=-np.inf, high=np.inf, shape=(12,), dtype=np.float64)
         MujocoEnv.__init__(
@@ -69,24 +68,30 @@ class InvertedTriplePendulumEnv(MujocoEnv, utils.EzPickle):
             "render_fps": int(np.round(1.0 / self.dt)),
         }
 
-    def step(self, action):
+    def step(
+        self, action: np.ndarray
+    ) -> tuple[np.ndarray, np.float64, bool, bool, dict[str, float | np.float64]]:
         self.do_simulation(action, self.frame_skip)
         x, _, z = self.data.site_xpos[0]  # tip site: x and height z
-        obs = self._get_obs()
+        obs: np.ndarray = self._get_obs()
         terminated = bool(z <= self._term_height)
         reward, info = self._get_rew(x, z, terminated)
         if self.render_mode == "human":
             self.render()
         return obs, reward, terminated, False, info
 
-    def _get_rew(self, x, z, terminated):
+    def _get_rew(
+        self, x: np.float64, z: np.float64, terminated: bool
+    ) -> tuple[float, dict[str, float]]:
         # Reward EVERY link being vertical (not just the tip): a far cleaner
         # "stand all three up" gradient than tip-height alone. The absolute angle
         # of link k from vertical is the cumulative sum of the relative hinge angles,
         # so sum(cos(.)) is 3 when the whole chain is perfectly upright.
-        abs_angles = np.cumsum(self.data.qpos[1:4])
+
+        abs_angles: np.ndarray = np.cumsum(self.data.qpos[1:4])
+
         upright = float(np.sum(np.cos(abs_angles)))  # in [-3, 3]
-        omega = self.data.qvel[1:4]  # the three hinge angular velocities
+        omega: np.ndarray = self.data.qvel[1:4]  # the three hinge angular velocities
 
         alive_bonus = self._healthy_reward * int(not terminated)
         upright_reward = self._upright_weight * upright
@@ -102,7 +107,7 @@ class InvertedTriplePendulumEnv(MujocoEnv, utils.EzPickle):
             "tip_height": z,
         }
 
-    def _get_obs(self):
+    def _get_obs(self) -> np.typing.NDArray[np.float64]:
         return np.concatenate(
             [
                 self.data.qpos[:1],  # cart position
@@ -113,7 +118,7 @@ class InvertedTriplePendulumEnv(MujocoEnv, utils.EzPickle):
             ]
         ).ravel()
 
-    def reset_model(self):
+    def reset_model(self) -> np.typing.NDArray[np.float64]:
         n = self._reset_noise_scale
         self.set_state(
             self.init_qpos + self.np_random.uniform(-n, n, self.model.nq),
