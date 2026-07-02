@@ -11,11 +11,11 @@ dependencies = [
     "tensorboard>=2.20.0",
     "gradio>=4.39.0",
     # Platform-specific PyTorch installations
-    "torch>=2.9.0; sys_platform == 'darwin'",
+    "torch>=2.12.1; sys_platform == 'darwin'",
     "torchvision>=0.22.1; sys_platform == 'darwin'",
-    "torch>=2.8.0; sys_platform == 'win32'",
+    "torch>=2.12.1; sys_platform == 'win32'",
     "torchvision>=0.22.1; sys_platform == 'win32'",
-    "torch>=2.8.0; sys_platform == 'linux'",
+    "torch>=2.12.1; sys_platform == 'linux'",
     "torchvision>=0.22.1; sys_platform == 'linux'",
 ]
 
