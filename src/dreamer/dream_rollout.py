@@ -61,7 +61,7 @@ def _compose(
     border = (90, 220, 120) if phase == "dream" else (200, 200, 200)
     right = cv2.copyMakeBorder(right, 4, 4, 4, 4, cv2.BORDER_CONSTANT, value=border)
     right = cv2.resize(right, (PANEL, PANEL))
-    rlabel = "DREAM — no real input" if phase == "dream" else "world-model (grounded)"
+    rlabel = "DREAM - no real input" if phase == "dream" else "world-model (grounded)"
     _label(right, rlabel, (8, 22), color=(120, 255, 160) if phase == "dream" else (255, 255, 255))
     frame = np.concatenate([left, right], axis=1)
     bar = np.full((34, frame.shape[1], 3), 20, dtype=np.uint8)
