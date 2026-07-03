@@ -84,6 +84,30 @@ PYTHONPATH=src uv run python src/dreamer/train.py --env InvertedTriplePendulum-v
 PYTHONPATH=src uv run python src/dreamer/record_demo.py   --checkpoint <ckpt> --env <env> --out demo/run
 PYTHONPATH=src uv run python src/dreamer/dream_rollout.py --checkpoint <ckpt> --env CarRacing-v3 --out demo/dream
 PYTHONPATH=src uv run python src/dreamer/eval_tests.py    --checkpoint <ckpt> --env CarRacing-v3 --tests 6 --stochastic
+PYTHONPATH=src uv run python src/dreamer/showcase.py      --checkpoint <ckpt> --seeds 16 --out demo/showcase
+```
+
+### DreamDrive — play inside the world model
+
+```bash
+PYTHONPATH=src uv run python src/dreamer/dreamdrive.py --checkpoint <ckpt> --record demo/session.mp4
+```
+
+An interactive window where **you** drive inside the trained world model. After a short
+warm-up grounds the latent state on real frames, the environment is discarded — every
+frame is the RSSM prior stepped forward with your keyboard action and decoded to pixels
+(~3.5 ms/frame on MPS). Arrows drive, `A` hands the wheel to the trained actor, `TAB`
+switches to a dream grounded on a different track, and staying in the imagined grass for
+3 seconds ends the run: the model genuinely forgets roads it cannot see.
+
+### Vectorized collection
+
+Data collection runs on parallel subprocess environments with one batched policy call
+per tick — on CarRacing this triples wall-clock throughput:
+
+```bash
+PYTHONPATH=src uv run python src/dreamer/train.py --env CarRacing-v3 --total-steps 800000 \
+    --num-envs 6 --train-every 10 --deter-dim 512 --cnn-depth 48
 ```
 
 Checkpoints (`dreamer_<env>_best.pt`, `_step<N>.pt`, `_final.pt`) are written to `--save-path`.
@@ -140,17 +164,19 @@ Registries: `ENCODER_REGISTRY`, `DECODER_REGISTRY`, `DYNAMICS_REGISTRY`, `ACTOR_
 
 ```
 src/dreamer/            DreamerV3-lite — networks, models (agent), replay, train, env,
-                        triple_pendulum (custom MuJoCo env), record_demo, dream_rollout, eval_tests
+                        triple_pendulum (custom MuJoCo env), record_demo, dream_rollout,
+                        eval_tests, showcase, dreamdrive (playable dream)
 src/{vision,memory,controller}/   original modular PPO world-model framework (registry-based)
 tests/test_dreamer.py   unit tests for the Dreamer agent (math, world model, actor-critic)
 ```
 
 ## Limitations & next steps
 
-- Single-environment data collection (slow); vectorized envs would speed training markedly.
-- CarRacing 632 is strong but not "solved" (~900) — more steps on a non-throttling GPU should
-  close the gap.
+- CarRacing 632 is strong but not "solved" (~900) — a larger-scale vectorized run is in
+  progress to close the gap.
 - No automated eval harness yet (evaluation runs through the demo/eval scripts).
+- Next: an action-conditioned world model trained on real dashcam video — same RSSM,
+  real roads.
 
 ## References
 
