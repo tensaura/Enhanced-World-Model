@@ -219,3 +219,4 @@ cli.json
 
 # Bulky demo media (curated copies live in assets/ for the README)
 demo/
+data/
