@@ -119,8 +119,23 @@ class VideoSequences:
             f"action_dim={self.action_dim}"
         )
 
+    def _start_probs(self, seq_len: int) -> np.ndarray:
+        """Window-start probabilities oversampling high-|steer| moments.
+
+        The recorded driver goes mostly straight, so uniform sampling starves
+        steering dynamics (the dream's steering feels mushy). Weight each
+        window by baseline + mean |steer|, giving turns a few times the mass."""
+        if getattr(self, "_probs_len", None) != seq_len:
+            cs = np.concatenate([[0.0], np.cumsum(np.abs(self.actions[:, 0]))])
+            n = len(self.frames) - seq_len
+            w = 0.15 + (cs[seq_len:seq_len + n] - cs[:n]) / seq_len
+            self._probs = w / w.sum()
+            self._probs_len = seq_len
+        return self._probs
+
     def sample(self, batch_size: int, seq_len: int, device: torch.device) -> dict[str, torch.Tensor]:
-        starts = np.random.randint(0, len(self.frames) - seq_len, size=batch_size)
+        n = len(self.frames) - seq_len
+        starts = np.random.choice(n, size=batch_size, p=self._start_probs(seq_len))
         idx = starts[:, None] + np.arange(seq_len)[None, :]
         zeros = np.zeros(idx.shape, dtype=np.float32)
         return {
@@ -135,6 +150,35 @@ class VideoSequences:
 # -------------------------------------------------------------------- trainer
 
 
+class VGGPerceptual(nn.Module):
+    """VGG16-feature perceptual loss on decoded frames.
+
+    MSE decoders average over uncertain futures, which reads as blur; matching
+    VGG features pushes the decoder toward sharp, texture-consistent frames.
+    Applied to a random subset of the batch's frames to bound the cost."""
+
+    def __init__(self, device: torch.device, weight: float, frac: float = 0.25) -> None:
+        super().__init__()
+        from torchvision.models import VGG16_Weights, vgg16
+
+        self.vgg = vgg16(weights=VGG16_Weights.IMAGENET1K_V1).features[:16].eval().to(device)
+        for p in self.vgg.parameters():
+            p.requires_grad_(False)
+        self.register_buffer("mean", torch.tensor([0.485, 0.456, 0.406], device=device).view(1, 3, 1, 1))
+        self.register_buffer("std", torch.tensor([0.229, 0.224, 0.225], device=device).view(1, 3, 1, 1))
+        self.weight = weight
+        self.frac = frac
+
+    def forward(self, recon: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        # recon/target are decoder-space (image - 0.5); map to [0, 1].
+        n = recon.shape[0]
+        k = max(1, int(n * self.frac))
+        idx = torch.randperm(n, device=recon.device)[:k]
+        pred = ((recon[idx] + 0.5).clamp(0, 1) - self.mean) / self.std
+        tgt = ((target[idx] + 0.5).clamp(0, 1) - self.mean) / self.std
+        return self.weight * torch.nn.functional.mse_loss(self.vgg(pred), self.vgg(tgt.detach()))
+
+
 def train_video_wm(
     data_dir: Path,
     out_dir: Path,
@@ -144,10 +188,12 @@ def train_video_wm(
     seq_len: int = 32,
     deter_dim: int = 256,
     cnn_depth: int = 32,
+    perceptual: float = 0.0,
     log_every: int = 100,
     save_every: int = 1000,
 ) -> Path:
     data = VideoSequences(data_dir)
+    is_128 = data.obs_shape[0] == 128
     cfg = DreamerConfig(
         obs_shape=tuple(data.obs_shape),
         action_dim=data.action_dim,
@@ -155,6 +201,8 @@ def train_video_wm(
         is_discrete=False,
         deter_dim=deter_dim,
         cnn_depth=cnn_depth,
+        encoder="ConvEncoder128" if is_128 else "",
+        decoder="ConvDecoder128" if is_128 else "",
     )
     # Full Dreamer container so existing save/load & demo tooling work;
     # the actor/critic simply stay untrained.
@@ -162,12 +210,15 @@ def train_video_wm(
     n_wm = sum(p.numel() for p in agent.wm.parameters())
     logger.info(f"Video world model: {n_wm / 1e6:.2f}M parameters on {device}")
     opt = torch.optim.Adam(agent.wm.parameters(), lr=cfg.model_lr, eps=cfg.eps)
+    recon_hook = VGGPerceptual(device, weight=perceptual) if perceptual > 0 else None
+    if recon_hook is not None:
+        logger.info(f"Perceptual sharpness loss enabled (weight {perceptual})")
 
     out_dir.mkdir(parents=True, exist_ok=True)
     start = time.time()
     for step in range(1, steps + 1):
         batch = data.sample(batch_size, seq_len, device)
-        loss, metrics, _ = agent.wm.loss(batch)
+        loss, metrics, _ = agent.wm.loss(batch, recon_hook=recon_hook)
         opt.zero_grad(set_to_none=True)
         loss.backward()
         nn.utils.clip_grad_norm_(agent.wm.parameters(), cfg.grad_clip)
@@ -176,7 +227,8 @@ def train_video_wm(
             sps = step / (time.time() - start)
             logger.info(
                 f"step {step:>6d} | recon {metrics.get('wm/recon', float('nan')):8.3f} | "
-                f"kl_dyn {metrics.get('wm/kl_dyn', float('nan')):6.3f} | {sps:4.1f} steps/s"
+                f"kl_dyn {metrics.get('wm/kl_dyn', float('nan')):6.3f} | "
+                f"percep {metrics.get('wm/recon_hook', float('nan')):7.3f} | {sps:4.1f} steps/s"
             )
         if step % save_every == 0:
             agent.save(out_dir / f"video_wm_step{step}.pt")
@@ -285,6 +337,8 @@ def main() -> None:
     parser.add_argument("--seq-len", type=int, default=32)
     parser.add_argument("--deter-dim", type=int, default=256)
     parser.add_argument("--cnn-depth", type=int, default=32)
+    parser.add_argument("--perceptual", type=float, default=0.0,
+                        help="Weight of the VGG perceptual sharpness loss (0 = off; try 20).")
     parser.add_argument("--context", type=int, default=15)
     parser.add_argument("--horizon", type=int, default=40)
     parser.add_argument("--seed", type=int, default=0)
@@ -308,6 +362,7 @@ def main() -> None:
             Path(args.data), Path(args.out), args.steps, device,
             batch_size=args.batch_size, seq_len=args.seq_len,
             deter_dim=args.deter_dim, cnn_depth=args.cnn_depth,
+            perceptual=args.perceptual,
         )
     if args.dream:
         ckpt = Path(args.checkpoint or (Path(args.out) / "video_wm_final.pt"))

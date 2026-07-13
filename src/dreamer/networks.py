@@ -154,6 +154,38 @@ class ConvEncoder(Encoder):
         return cls(cfg.obs_shape[2], depth=cfg.cnn_depth)
 
 
+class ConvEncoder128(Encoder):
+    """Maps a 128x128 image to a flat embedding via five stride-2 conv layers.
+
+    The final feature map is 4x4 like ConvEncoder's, so embed_dim — and
+    therefore the RSSM — is identical to the 64x64 pipeline."""
+
+    def __init__(self, channels: int, depth: int = 32) -> None:
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Conv2d(channels, depth, 4, stride=2, padding=1),
+            nn.SiLU(),
+            nn.Conv2d(depth, 2 * depth, 4, stride=2, padding=1),
+            nn.SiLU(),
+            nn.Conv2d(2 * depth, 4 * depth, 4, stride=2, padding=1),
+            nn.SiLU(),
+            nn.Conv2d(4 * depth, 8 * depth, 4, stride=2, padding=1),
+            nn.SiLU(),
+            nn.Conv2d(8 * depth, 8 * depth, 4, stride=2, padding=1),
+            nn.SiLU(),
+        )
+        self.embed_dim = 8 * depth * 4 * 4  # 4x4 spatial after five /2 downsamples
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # x: (N, C, 128, 128) → (N, embed_dim)
+        h = self.net(x)
+        return h.reshape(h.shape[0], -1)
+
+    @classmethod
+    def from_config(cls, cfg: Any) -> ConvEncoder128:
+        return cls(cfg.obs_shape[2], depth=cfg.cnn_depth)
+
+
 class MLPEncoder(Encoder):
     """Maps a (symlog) vector observation to an embedding."""
 
@@ -197,6 +229,35 @@ class ConvDecoder(Decoder):
 
     @classmethod
     def from_config(cls, cfg: Any, feat_dim: int) -> ConvDecoder:
+        return cls(feat_dim, cfg.obs_shape[2], depth=cfg.cnn_depth)
+
+
+class ConvDecoder128(Decoder):
+    """Reconstructs a 128x128 image from the latent feature vector (5 upsamples)."""
+
+    def __init__(self, feat_dim: int, channels: int, depth: int = 32) -> None:
+        super().__init__()
+        self.depth = depth
+        self.fc = nn.Linear(feat_dim, 8 * depth * 4 * 4)
+        self.net = nn.Sequential(
+            nn.ConvTranspose2d(8 * depth, 8 * depth, 4, stride=2, padding=1),
+            nn.SiLU(),
+            nn.ConvTranspose2d(8 * depth, 4 * depth, 4, stride=2, padding=1),
+            nn.SiLU(),
+            nn.ConvTranspose2d(4 * depth, 2 * depth, 4, stride=2, padding=1),
+            nn.SiLU(),
+            nn.ConvTranspose2d(2 * depth, depth, 4, stride=2, padding=1),
+            nn.SiLU(),
+            nn.ConvTranspose2d(depth, channels, 4, stride=2, padding=1),
+        )
+
+    def forward(self, feat: torch.Tensor) -> torch.Tensor:
+        # feat: (N, feat_dim) → (N, C, 128, 128)
+        h = self.fc(feat).reshape(-1, 8 * self.depth, 4, 4)
+        return self.net(h)
+
+    @classmethod
+    def from_config(cls, cfg: Any, feat_dim: int) -> ConvDecoder128:
         return cls(feat_dim, cfg.obs_shape[2], depth=cfg.cnn_depth)
 
 

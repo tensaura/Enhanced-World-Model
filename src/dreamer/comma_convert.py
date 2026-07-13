@@ -32,9 +32,12 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
-SIZE = 64
+SIZE = 128
 EPISODE_LEN = 1200  # 60 s at 20 Hz
-MIN_MEAN_SPEED = 5.0  # m/s; drop chunks that are mostly standing still
+# Keep slow traffic and stops in-distribution (a world model that has never
+# seen a stationary world turns to mush when the player brakes); only drop
+# chunks where the car is essentially parked throughout.
+MIN_MEAN_SPEED = 0.5  # m/s
 STEER_SCALE = 1800.0  # raw log units are deg*10; 180 deg of wheel angle -> |1|
 SPEED_SCALE = 35.0  # m/s mapped to action range
 

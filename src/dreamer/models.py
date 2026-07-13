@@ -5,7 +5,7 @@ from __future__ import annotations
 import copy
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import torch
 import torch.nn as nn
@@ -151,11 +151,16 @@ class WorldModel(nn.Module):
 
     # -------------------------------------------------------------------- loss
 
-    def loss(self, batch: dict[str, torch.Tensor]) -> tuple[torch.Tensor, dict, dict]:
+    def loss(
+        self,
+        batch: dict[str, torch.Tensor],
+        recon_hook: Callable[[torch.Tensor, torch.Tensor], torch.Tensor] | None = None,
+    ) -> tuple[torch.Tensor, dict, dict]:
         """Compute the world-model loss on a replay batch.
 
         Returns ``(total_loss, metrics, post_states)`` where ``post_states`` are the
-        posterior states used as imagination start points.
+        posterior states used as imagination start points. ``recon_hook(recon, target)``
+        may return an extra loss term on the decoded frames (e.g. a perceptual loss).
         """
         cfg = self.cfg
         obs = batch["obs"]
@@ -198,7 +203,14 @@ class WorldModel(nn.Module):
             + cfg.beta_rep * kl_rep
         )
 
+        extra_metrics: dict[str, float] = {}
+        if recon_hook is not None:
+            extra = recon_hook(recon, target)
+            total = total + extra
+            extra_metrics["wm/recon_hook"] = extra.item()
+
         metrics = {
+            **extra_metrics,
             "wm/recon": recon_loss.item(),
             "wm/reward": reward_loss.item(),
             "wm/continue": cont_loss.item(),
