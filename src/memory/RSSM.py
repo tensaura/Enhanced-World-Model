@@ -153,15 +153,13 @@ class RSSM(MemoryModel):
 
         # ── Deterministic update ──────────────────────────────────────────────
         gru_input = torch.cat([self.z_state, a_prev], dim=-1)  # (B, stoch+action)
-        h_t = self.gru(gru_input, self.h_state)                 # (B, rnn_dim)
+        h_t = self.gru(gru_input, self.h_state)  # (B, rnn_dim)
 
         # ── Prior p(z_t | h_t) ───────────────────────────────────────────────
         mu_prior, std_prior = self._split_stats(self.prior_mlp(h_t))
 
         # ── Posterior q(z_t | h_t, o_t) ─────────────────────────────────────
-        mu_post, std_post = self._split_stats(
-            self.posterior_mlp(torch.cat([h_t, o_t], dim=-1))
-        )
+        mu_post, std_post = self._split_stats(self.posterior_mlp(torch.cat([h_t, o_t], dim=-1)))
 
         # ── KL divergence loss ───────────────────────────────────────────────
         kl = self._kl_divergence(mu_post, std_post, mu_prior, std_prior)
