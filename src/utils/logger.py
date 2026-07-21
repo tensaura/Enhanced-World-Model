@@ -1,6 +1,6 @@
-from typing import TextIO
-from sys import stdout
 from enum import StrEnum
+from sys import stdout
+from typing import TextIO
 
 
 class Style(StrEnum):
@@ -30,7 +30,7 @@ class Style(StrEnum):
 
 class Logger:
     def __init__(self, fd: TextIO = stdout) -> None:
-        self.fd = fd
+        self.fd: TextIO = fd
 
     def log(
         self, *messages: str, style: str = Style.GREEN, sep: str = "\n", end: str = "\n"
@@ -51,7 +51,7 @@ class Logger:
 
     def dict_log(
         self,
-        data: dict,
+        data: dict[str, str],
         key_style: str = Style.CYAN,
         value_style: str = Style.YELLOW,
         sep: str = "\n",

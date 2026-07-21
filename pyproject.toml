@@ -109,6 +109,8 @@ reportAny = false
 reportExplicitAny = false
 reportUnknownArgumentType = false
 reportUnknownMemberType = false
+reportUnusedCallResult = false
+reportUnknownVariableType = false
 
 [tool.coverage.run]
 source = ["src"]
