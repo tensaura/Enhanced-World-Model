@@ -1,5 +1,6 @@
 from abc import abstractmethod
 from typing import Any
+
 import torch
 
 from Model import Model
@@ -84,9 +85,7 @@ class MemoryModel(Model):
         """
         return None
 
-    def compute_cpc_loss(
-        self, h_t: torch.Tensor, z_next: torch.Tensor
-    ) -> torch.Tensor | None:
+    def compute_cpc_loss(self, h_t: torch.Tensor, z_next: torch.Tensor) -> torch.Tensor | None:
         """
         Compute a Contrastive Predictive Coding (InfoNCE) auxiliary loss.
 
