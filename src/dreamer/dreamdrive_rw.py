@@ -92,17 +92,13 @@ class RealDreamSession:
             if data.actions[s : s + context, 1].mean() < -0.45:
                 continue  # car mostly standing still (< ~10 m/s)
             self.levels.append(
-                {
-                    "frames": data.frames[s : s + context],
-                    "actions": data.actions[s : s + context + ghost_len],
-                }
+                {"frames": data.frames[s : s + context], "actions": data.actions[s : s + context + ghost_len]}
             )
             if len(self.levels) >= n_levels:
                 break
         if not self.levels:
             raise RuntimeError("No moving, boundary-free context windows found in the data")
-        logger.info(f"Prepared {len(self.levels)} real-moment levels "
-                    f"({self.n_params / 1e6:.1f}M params on {device})")
+        logger.info(f"Prepared {len(self.levels)} real-moment levels ({self.n_params / 1e6:.1f}M params on {device})")
         self.state: dict[str, torch.Tensor] = {}
         self.steps = 0
         self._level = 0
@@ -149,8 +145,7 @@ def compose_rw(dream64: np.ndarray, hud: dict) -> np.ndarray:
     frame[:] = BG
     panel = cv2.resize(dream64, (DREAM, DREAM), interpolation=cv2.INTER_NEAREST)
     frame[PANEL_Y : PANEL_Y + DREAM, PANEL_X : PANEL_X + DREAM] = panel
-    cv2.rectangle(frame, (PANEL_X - 2, PANEL_Y - 2),
-                  (PANEL_X + DREAM + 1, PANEL_Y + DREAM + 1), ACCENT, 2)
+    cv2.rectangle(frame, (PANEL_X - 2, PANEL_Y - 2), (PANEL_X + DREAM + 1, PANEL_Y + DREAM + 1), ACCENT, 2)
 
     _text(frame, "DREAMDRIVE | REAL WORLD", (SIDE_X, 92), 1.0, FG, 2, FONT)
     _text(frame, "a dream of real California streets", (SIDE_X, 128), 0.6, DIM)
@@ -172,8 +167,7 @@ def compose_rw(dream64: np.ndarray, hud: dict) -> np.ndarray:
     kmh = (hud["speed"] + 1) / 2 * SPEED_MAX_MS * 3.6
     _text(frame, f"speed setpoint  {kmh:5.0f} km/h", (x0, y0 + 44), 0.55, ACCENT)
 
-    _text(frame, "arrows steer/speed | A ghost | TAB level | R restart | ESC quit",
-          (SIDE_X, H - 46), 0.48, DIM)
+    _text(frame, "arrows steer/speed | A ghost | TAB level | R restart | ESC quit", (SIDE_X, H - 46), 0.48, DIM)
     if hud["steps"] > 0 and hud["steps"] < 3 * FPS:
         _text(frame, "FOOTAGE ENDED - dreaming now", (PANEL_X + 12, PANEL_Y + DREAM - 16), 0.62, WARN, 1, FONT)
     return frame
@@ -189,8 +183,9 @@ def play(session: RealDreamSession, record: str | None) -> None:
     writer = None
     if record:
         Path(record).parent.mkdir(parents=True, exist_ok=True)
-        writer = imageio.get_writer(record, fps=FPS, codec="libx264",
-                                    quality=8, pixelformat="yuv420p", macro_block_size=None)
+        writer = imageio.get_writer(
+            record, fps=FPS, codec="libx264", quality=8, pixelformat="yuv420p", macro_block_size=None
+        )
 
     level, ghost = 0, False
     steer = 0.0
@@ -227,12 +222,23 @@ def play(session: RealDreamSession, record: str | None) -> None:
         dream64 = session.step(steer, speed)
         ms = (time.perf_counter() - t0) * 1e3
 
-        frame = compose_rw(dream64, {
-            "params": session.n_params, "ghost": ghost, "level": level,
-            "n_levels": len(session.levels), "steps": session.steps,
-            "fps": clock.get_fps(), "ms": ms, "device": str(session.device),
-            "steer": steer, "accel": accel, "decel": decel, "speed": speed,
-        })
+        frame = compose_rw(
+            dream64,
+            {
+                "params": session.n_params,
+                "ghost": ghost,
+                "level": level,
+                "n_levels": len(session.levels),
+                "steps": session.steps,
+                "fps": clock.get_fps(),
+                "ms": ms,
+                "device": str(session.device),
+                "steer": steer,
+                "accel": accel,
+                "decel": decel,
+                "speed": speed,
+            },
+        )
         surf = pygame.surfarray.make_surface(frame.swapaxes(0, 1))
         screen.blit(surf, (0, 0))
         pygame.display.flip()
@@ -249,8 +255,7 @@ def play(session: RealDreamSession, record: str | None) -> None:
 def selftest(session: RealDreamSession, out: str) -> None:
     """Headless scripted session per level: ghost, steer left, steer right, straight."""
     Path(out).parent.mkdir(parents=True, exist_ok=True)
-    writer = imageio.get_writer(out, fps=FPS, codec="libx264", quality=8,
-                                pixelformat="yuv420p", macro_block_size=None)
+    writer = imageio.get_writer(out, fps=FPS, codec="libx264", quality=8, pixelformat="yuv420p", macro_block_size=None)
     times = []
     for level in range(len(session.levels)):
         speed = session.reset(level)
@@ -269,16 +274,30 @@ def selftest(session: RealDreamSession, out: str) -> None:
                 t0 = time.perf_counter()
                 dream64 = session.step(steer, speed)
                 times.append((time.perf_counter() - t0) * 1e3)
-                writer.append_data(compose_rw(dream64, {
-                    "params": session.n_params, "ghost": ghost, "level": level,
-                    "n_levels": len(session.levels), "steps": session.steps,
-                    "fps": FPS, "ms": times[-1], "device": str(session.device),
-                    "steer": steer, "accel": 0.0, "decel": 0.0, "speed": speed,
-                }))
+                writer.append_data(
+                    compose_rw(
+                        dream64,
+                        {
+                            "params": session.n_params,
+                            "ghost": ghost,
+                            "level": level,
+                            "n_levels": len(session.levels),
+                            "steps": session.steps,
+                            "fps": FPS,
+                            "ms": times[-1],
+                            "device": str(session.device),
+                            "steer": steer,
+                            "accel": 0.0,
+                            "decel": 0.0,
+                            "speed": speed,
+                        },
+                    )
+                )
         logger.info(f"Level {level}: {sum(n for _, n in phases)} dream steps")
     writer.close()
-    logger.info(f"Selftest: median {np.median(times):.1f} ms/frame "
-                f"(max ~{1000 / np.median(times):.0f} fps). Saved {out}")
+    logger.info(
+        f"Selftest: median {np.median(times):.1f} ms/frame (max ~{1000 / np.median(times):.0f} fps). Saved {out}"
+    )
 
 
 def main() -> None:
@@ -297,12 +316,15 @@ def main() -> None:
         device = torch.device(args.device)
     else:
         device = (
-            torch.device("mps") if torch.backends.mps.is_available()
-            else torch.device("cuda") if torch.cuda.is_available()
+            torch.device("mps")
+            if torch.backends.mps.is_available()
+            else torch.device("cuda")
+            if torch.cuda.is_available()
             else torch.device("cpu")
         )
-    session = RealDreamSession(args.checkpoint, args.data, device,
-                               n_levels=args.levels, context=args.context, seed=args.seed)
+    session = RealDreamSession(
+        args.checkpoint, args.data, device, n_levels=args.levels, context=args.context, seed=args.seed
+    )
     if args.selftest:
         selftest(session, args.selftest)
     else:

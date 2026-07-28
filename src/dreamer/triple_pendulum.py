@@ -40,14 +40,7 @@ class InvertedTriplePendulumEnv(MujocoEnv, utils.EzPickle):
         **kwargs: dict[str, Any],
     ) -> None:
         utils.EzPickle.__init__(
-            self,
-            xml_file,
-            frame_skip,
-            healthy_reward,
-            upright_weight,
-            term_height,
-            reset_noise_scale,
-            **kwargs,
+            self, xml_file, frame_skip, healthy_reward, upright_weight, term_height, reset_noise_scale, **kwargs
         )
         self._healthy_reward: float = healthy_reward
         self._upright_weight: float = upright_weight
@@ -68,9 +61,7 @@ class InvertedTriplePendulumEnv(MujocoEnv, utils.EzPickle):
             "render_fps": int(np.round(1.0 / self.dt)),
         }
 
-    def step(
-        self, action: np.ndarray
-    ) -> tuple[np.ndarray, np.float64, bool, bool, dict[str, float | np.float64]]:
+    def step(self, action: np.ndarray) -> tuple[np.ndarray, np.float64, bool, bool, dict[str, float | np.float64]]:
         self.do_simulation(action, self.frame_skip)
         x, _, z = self.data.site_xpos[0]  # tip site: x and height z
         obs: np.ndarray = self._get_obs()
@@ -80,9 +71,7 @@ class InvertedTriplePendulumEnv(MujocoEnv, utils.EzPickle):
             self.render()
         return obs, reward, terminated, False, info
 
-    def _get_rew(
-        self, x: np.float64, z: np.float64, terminated: bool
-    ) -> tuple[float, dict[str, float]]:
+    def _get_rew(self, x: np.float64, z: np.float64, terminated: bool) -> tuple[float, dict[str, float]]:
         # Reward EVERY link being vertical (not just the tip): a far cleaner
         # "stand all three up" gradient than tip-height alone. The absolute angle
         # of link k from vertical is the cumulative sum of the relative hinge angles,

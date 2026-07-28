@@ -24,17 +24,10 @@ def create_model_from_args(
     )
     if args.load_path:
         cli_printer.log(f"Loading model from {args.load_path}")
-        model.load(
-            args.load_path,
-            obs_space=obs_space,
-            action_space=action_space,
-            device=torch.device("cpu"),
-        )
+        model.load(args.load_path, obs_space=obs_space, action_space=action_space, device=torch.device("cpu"))
     if args.patch_load_path:
         cli_printer.log(f"Patching model with {args.patch_load_path}")
-        model.patch_load(
-            args.patch_load_path, args.patch, obs_space, action_space, torch.device("cpu")
-        )
+        model.patch_load(args.patch_load_path, args.patch, obs_space, action_space, torch.device("cpu"))
     assert isinstance(model, WorldModel)
     return model
 
@@ -83,33 +76,23 @@ def get_model_warnings(
 ) -> tuple[str, str]:
     _, _, is_image_based, is_discrete = get_env_info(env)
     if is_image_based and "image_based" not in vision_registry[vision_model].tags:
-        vision_warning = (
-            f"{Style.RED} Warning: The selected vision model is not image-based.{Style.RESET}"
-        )
+        vision_warning = f"{Style.RED} Warning: The selected vision model is not image-based.{Style.RESET}"
     elif not is_image_based and "image_based" in vision_registry[vision_model].tags:
-        vision_warning = (
-            f"{Style.RED} Warning: The selected vision model is image-based.{Style.RESET}"
-        )
+        vision_warning = f"{Style.RED} Warning: The selected vision model is image-based.{Style.RESET}"
     else:
         vision_warning = ""
 
     if is_discrete and "continuous" in controller_registry[controller_model].tags:
-        controller_warning = (
-            f"{Style.RED} Warning: The selected controller is continuous.{Style.RESET}"
-        )
+        controller_warning = f"{Style.RED} Warning: The selected controller is continuous.{Style.RESET}"
     elif not is_discrete and "discrete" in controller_registry[controller_model].tags:
-        controller_warning = (
-            f"{Style.RED} Warning: The selected controller is discrete.{Style.RESET}"
-        )
+        controller_warning = f"{Style.RED} Warning: The selected controller is discrete.{Style.RESET}"
     else:
         controller_warning = ""
 
     return vision_warning, controller_warning
 
 
-def print_main_args(
-    args: Namespace, vision_registry: dict, _memory_registry: dict, controller_registry: dict
-) -> None:
+def print_main_args(args: Namespace, vision_registry: dict, _memory_registry: dict, controller_registry: dict) -> None:
     print_separator()
     cli_printer.log("Main arguments:", style=Style.CYAN + Style.UNDERLINE)
 
@@ -125,13 +108,7 @@ def print_main_args(
         )
     else:
         vision_warning, controller_warning = get_model_warnings(
-            args.env,
-            args.vision,
-            args.memory,
-            args.controller,
-            vision_registry,
-            _memory_registry,
-            controller_registry,
+            args.env, args.vision, args.memory, args.controller, vision_registry, _memory_registry, controller_registry
         )
 
     main_dict = {
@@ -151,13 +128,9 @@ def print_main_args(
         main_dict["  - Vision    "] = (
             model.vision.__class__.__name__ + vision_warning + f" {Style.RED_BG}From loaded model."
         )
-        main_dict["  - Memory    "] = (
-            model.memory.__class__.__name__ + f" {Style.RED_BG}From loaded model."
-        )
+        main_dict["  - Memory    "] = model.memory.__class__.__name__ + f" {Style.RED_BG}From loaded model."
         main_dict["  - Controller"] = (
-            model.controller.__class__.__name__
-            + controller_warning
-            + f" {Style.RED_BG}From loaded model."
+            model.controller.__class__.__name__ + controller_warning + f" {Style.RED_BG}From loaded model."
         )
 
     cli_printer.dict_log(main_dict)
@@ -166,9 +139,7 @@ def print_main_args(
         cli_printer.warn("\nModel choices will be overriden by model to load !")
 
 
-def edit_main_args(
-    args: Namespace, vision_registry: dict, memory_registry: dict, controller_registry: dict
-) -> None:
+def edit_main_args(args: Namespace, vision_registry: dict, memory_registry: dict, controller_registry: dict) -> None:
     print_separator()
 
     while True:
@@ -188,12 +159,8 @@ def edit_main_args(
         }
 
         if model:
-            main_edit_dict["  - 1: Vision"] = (
-                model.vision.__class__.__name__ + f" {Style.RED_BG}From loaded model."
-            )
-            main_edit_dict["  - 2: Memory"] = (
-                model.memory.__class__.__name__ + f" {Style.RED_BG}From loaded model."
-            )
+            main_edit_dict["  - 1: Vision"] = model.vision.__class__.__name__ + f" {Style.RED_BG}From loaded model."
+            main_edit_dict["  - 2: Memory"] = model.memory.__class__.__name__ + f" {Style.RED_BG}From loaded model."
             main_edit_dict["  - 3: Controller"] = (
                 model.controller.__class__.__name__ + f" {Style.RED_BG}From loaded model."
             )
@@ -206,9 +173,7 @@ def edit_main_args(
                 edit_env(args)
             case "1" | "2" | "3":
                 edit_choice = int(command)
-                registries = [vision_registry, memory_registry, controller_registry][
-                    edit_choice - 1
-                ]
+                registries = [vision_registry, memory_registry, controller_registry][edit_choice - 1]
 
                 models = {
                     f"{i}": f"{name}{Style.RESET} [{Style.BLUE}{', '.join(cls.tags)}{Style.RESET}]"
@@ -226,9 +191,7 @@ def edit_main_args(
 
                     setattr(args, fields[edit_choice - 1], list(registries.keys())[model_id_choice])
                 else:
-                    cli_printer.error(
-                        f"Invalid model choice. Enter a number between 0 and {len(registries) - 1}."
-                    )
+                    cli_printer.error(f"Invalid model choice. Enter a number between 0 and {len(registries) - 1}.")
             case "4" | "5" | "6" | "7" | "8":
                 edit_choice = int(command)
                 value = cli_printer.input(
@@ -245,19 +208,14 @@ def edit_main_args(
 
                     casters: list[Callable[[str], object]] = [int, int, str_int, float, float]
                     value_object = casters[edit_choice - 4](value)
-                    if (
-                        isinstance(value_object, int) or isinstance(value_object, float)
-                    ) and value_object < 0:
+                    if (isinstance(value_object, int) or isinstance(value_object, float)) and value_object < 0:
                         cli_printer.error("Negative value.")
                         continue
                     setattr(args, fields[edit_choice - 4], value_object)
                 except ValueError:
                     cli_printer.error("Invalid value.")
             case "9":
-                render_modes = {
-                    "0": ("rgb_array", "RGB array (no render)"),
-                    "1": ("human", "Human"),
-                }
+                render_modes = {"0": ("rgb_array", "RGB array (no render)"), "1": ("human", "Human")}
                 for key, (_, description) in render_modes.items():
                     cli_printer.log(f"  - {key}: {Style.YELLOW}{description}")
 
@@ -358,9 +316,7 @@ def edit_advanced_args(
                 load_path = cli_printer.input("Enter path to load model: ")
                 if load_path and os.path.exists(load_path):
                     args.load_path = load_path
-                    model = create_model_from_args(
-                        args, vision_registry, memory_registry, controller_registry
-                    )
+                    model = create_model_from_args(args, vision_registry, memory_registry, controller_registry)
 
                 else:
                     cli_printer.error("Invalid path.")
@@ -368,9 +324,7 @@ def edit_advanced_args(
                 patch_load_path = cli_printer.input("Enter path to patch model: ")
                 if patch_load_path and os.path.exists(patch_load_path):
                     args.patch_load_path = patch_load_path
-                    model = create_model_from_args(
-                        args, vision_registry, memory_registry, controller_registry
-                    )
+                    model = create_model_from_args(args, vision_registry, memory_registry, controller_registry)
 
                 else:
                     cli_printer.error("Invalid path.")
@@ -382,9 +336,7 @@ def edit_advanced_args(
                 patch_choice = cli_printer.input("Choice: ")
                 if patch_choice in ["v", "m", "c", "vm", "vc", "mc", "vmc"]:
                     args.patch = patch_choice
-                    model = create_model_from_args(
-                        args, vision_registry, memory_registry, controller_registry
-                    )
+                    model = create_model_from_args(args, vision_registry, memory_registry, controller_registry)
                 else:
                     cli_printer.error("Invalid patch choice.")
             case "5":
@@ -480,9 +432,7 @@ def edit_ppo_args(args: Namespace) -> None:
                     cli_printer.error("Invalid value.")
                     continue
             case "11":
-                train_world_model = cli_printer.input(
-                    "Train world model (vision and memory)? (y/n): "
-                )
+                train_world_model = cli_printer.input("Train world model (vision and memory)? (y/n): ")
                 if train_world_model.lower() == "y":
                     args.no_train_world_model = False
                 elif train_world_model.lower() == "n":
@@ -601,9 +551,7 @@ def edit_inference_args(
         if model:
             infer_dict["  Vision"] = str(model.vision.__class__.__name__) + vision_warning
             infer_dict["  Memory"] = str(model.memory.__class__.__name__)
-            infer_dict["  Controller"] = (
-                str(model.controller.__class__.__name__) + controller_warning
-            )
+            infer_dict["  Controller"] = str(model.controller.__class__.__name__) + controller_warning
 
         cli_printer.dict_log(infer_dict)
 
@@ -616,18 +564,14 @@ def edit_inference_args(
                 load_path = cli_printer.input("Enter path to load model: ")
                 if load_path and os.path.exists(load_path):
                     args.load_path = load_path
-                    model = create_model_from_args(
-                        args, vision_registry, memory_registry, controller_registry
-                    )
+                    model = create_model_from_args(args, vision_registry, memory_registry, controller_registry)
                 else:
                     cli_printer.error("Invalid path.")
             case "2":
                 patch_load_path = cli_printer.input("Enter path to patch model: ")
                 if patch_load_path and os.path.exists(patch_load_path):
                     args.patch_load_path = patch_load_path
-                    model = create_model_from_args(
-                        args, vision_registry, memory_registry, controller_registry
-                    )
+                    model = create_model_from_args(args, vision_registry, memory_registry, controller_registry)
 
                 else:
                     cli_printer.error("Invalid path.")
@@ -639,9 +583,7 @@ def edit_inference_args(
                 patch_choice = cli_printer.input("Choice: ")
                 if patch_choice in ["v", "m", "c", "vm", "vc", "mc", "vmc"]:
                     args.patch = patch_choice
-                    model = create_model_from_args(
-                        args, vision_registry, memory_registry, controller_registry
-                    )
+                    model = create_model_from_args(args, vision_registry, memory_registry, controller_registry)
                 else:
                     cli_printer.error("Invalid patch choice.")
             case "4":
@@ -652,10 +594,7 @@ def edit_inference_args(
                 else:
                     cli_printer.error("Invalid value.")
             case "5":
-                render_modes = {
-                    "0": ("rgb_array", "RGB array (no render)"),
-                    "1": ("human", "Human"),
-                }
+                render_modes = {"0": ("rgb_array", "RGB array (no render)"), "1": ("human", "Human")}
                 for key, (_, description) in render_modes.items():
                     cli_printer.log(f"  - {key}: {Style.YELLOW}{description}")
 
@@ -671,9 +610,7 @@ def edit_inference_args(
                 cli_printer.error("Invalid command.")
 
 
-def CLI(
-    args: Namespace, vision_registry: dict, memory_registry: dict, controller_registry: dict
-) -> None:
+def CLI(args: Namespace, vision_registry: dict, memory_registry: dict, controller_registry: dict) -> None:
     global model
     cli_printer.log("Welcome to the Enhanced World Model CLI!", style=Style.GREEN + Style.BOLD)
     if args.load_path:
@@ -711,9 +648,7 @@ def CLI(
                 case "8":
                     load_args(args)
                     if args.load_path:
-                        model = create_model_from_args(
-                            args, vision_registry, memory_registry, controller_registry
-                        )
+                        model = create_model_from_args(args, vision_registry, memory_registry, controller_registry)
                 case "exit" | "x":
                     exit(0)
                 case _:

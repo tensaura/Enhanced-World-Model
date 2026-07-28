@@ -32,9 +32,7 @@ class Logger:
     def __init__(self, fd: TextIO = stdout) -> None:
         self.fd: TextIO = fd
 
-    def log(
-        self, *messages: str, style: str = Style.GREEN, sep: str = "\n", end: str = "\n"
-    ) -> None:
+    def log(self, *messages: str, style: str = Style.GREEN, sep: str = "\n", end: str = "\n") -> None:
         print(f"{style}{sep.join(messages)}{Style.RESET}", file=self.fd, end=end)
 
     def warn(self, *messages: str, sep: str = "\n") -> None:
@@ -43,24 +41,15 @@ class Logger:
     def error(self, *messages: str, sep: str = "\n") -> None:
         print(f"{Style.RED}{Style.INVERT}Error: {sep.join(messages)}{Style.RESET}", file=self.fd)
 
-    def input(
-        self, *messages: str, style: str = Style.GREEN, sep: str = "\n", end: str = ""
-    ) -> str:
+    def input(self, *messages: str, style: str = Style.GREEN, sep: str = "\n", end: str = "") -> str:
         self.log(f"{sep.join(messages)}", style=style, end=end)
         return input()
 
     def dict_log(
-        self,
-        data: dict[str, str],
-        key_style: str = Style.CYAN,
-        value_style: str = Style.YELLOW,
-        sep: str = "\n",
+        self, data: dict[str, str], key_style: str = Style.CYAN, value_style: str = Style.YELLOW, sep: str = "\n"
     ) -> None:
         print(
-            *(
-                f"{key_style}{key}: {value_style}{value}{Style.RESET}"
-                for key, value in data.items()
-            ),
+            *(f"{key_style}{key}: {value_style}{value}{Style.RESET}" for key, value in data.items()),
             file=self.fd,
             sep=sep,
         )

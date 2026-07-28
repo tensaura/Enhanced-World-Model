@@ -238,16 +238,8 @@ def train(
                 epoch_completed_rewards.append(ep_reward)
 
                 if writer:
-                    writer.add_scalar(
-                        "rollout/episode_reward",
-                        ep_reward,
-                        completed_episodes,
-                    )
-                    writer.add_scalar(
-                        "rollout/episode_length",
-                        episode_lengths[env_idx].item(),
-                        completed_episodes,
-                    )
+                    writer.add_scalar("rollout/episode_reward", ep_reward, completed_episodes)
+                    writer.add_scalar("rollout/episode_length", episode_lengths[env_idx].item(), completed_episodes)
 
                 # Track best single-episode reward
                 if ep_reward > best_reward:
@@ -298,9 +290,7 @@ def train(
                 h_t = batch["hidden_states"].detach()
 
                 # Evaluate actions using the controller's evaluate_actions method
-                new_log_probs, new_values, entropy = model.controller.evaluate_actions(
-                    z_t, h_t, actions
-                )
+                new_log_probs, new_values, entropy = model.controller.evaluate_actions(z_t, h_t, actions)
 
                 # ============ POLICY LOSS (Clipped Surrogate) ============
                 log_ratio = new_log_probs - old_log_probs
@@ -314,9 +304,7 @@ def train(
                 # ============ VALUE LOSS ============
                 if clip_range_vf is not None:
                     # Clipped value loss
-                    values_clipped = old_values + torch.clamp(
-                        new_values - old_values, -clip_range_vf, clip_range_vf
-                    )
+                    values_clipped = old_values + torch.clamp(new_values - old_values, -clip_range_vf, clip_range_vf)
                     value_loss_1 = (new_values - returns) ** 2
                     value_loss_2 = (values_clipped - returns) ** 2
                     value_loss = 0.5 * torch.max(value_loss_1, value_loss_2).mean()
@@ -364,9 +352,7 @@ def train(
 
                     # Convert discrete actions to one-hot for memory
                     if is_discrete:
-                        a_t = torch.nn.functional.one_hot(
-                            actions.long(), num_classes=action_dim
-                        ).float()
+                        a_t = torch.nn.functional.one_hot(actions.long(), num_classes=action_dim).float()
                     else:
                         a_t = actions
 
@@ -377,11 +363,7 @@ def train(
                     if recon.shape == obs.shape:
                         vision_loss = torch.nn.functional.mse_loss(recon, obs)
                     else:
-                        vision_loss = (
-                            vq_loss.mean()
-                            if vq_loss.numel() > 0
-                            else torch.tensor(0.0, device=device)
-                        )
+                        vision_loss = vq_loss.mean() if vq_loss.numel() > 0 else torch.tensor(0.0, device=device)
 
                     # Memory loss: predict next latent state
                     z_next_pred = model.memory.predict_next(z_t, a_t, h_t)
@@ -415,9 +397,7 @@ def train(
             avg_memory_loss /= max(wm_updates, 1)
 
         # ============ MEAN EPOCH REWARD + EARLY STOPPING ============
-        mean_epoch_reward = (
-            float(np.mean(epoch_completed_rewards)) if epoch_completed_rewards else float("nan")
-        )
+        mean_epoch_reward = float(np.mean(epoch_completed_rewards)) if epoch_completed_rewards else float("nan")
 
         if not np.isnan(mean_epoch_reward):
             if mean_epoch_reward > best_mean_reward:
@@ -427,8 +407,7 @@ def train(
                 patience_counter += 1
                 if patience > 0 and patience_counter >= patience:
                     logger.info(
-                        f"Early stopping at epoch {epoch}: "
-                        f"no reward improvement for {patience} consecutive epochs."
+                        f"Early stopping at epoch {epoch}: no reward improvement for {patience} consecutive epochs."
                     )
                     # Save a checkpoint before stopping
                     model.save(save_path / "ppo_early_stop.pt", obs_space, action_space)

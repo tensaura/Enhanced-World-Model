@@ -36,9 +36,7 @@ class TemporalTransformer(MemoryModel):
 
         self.prior_proj = torch.nn.Linear(latent_dim + action_dim, d_model)
 
-        encoder_layer = torch.nn.TransformerEncoderLayer(
-            d_model=d_model, nhead=nhead, batch_first=True
-        )
+        encoder_layer = torch.nn.TransformerEncoderLayer(d_model=d_model, nhead=nhead, batch_first=True)
         self.transformer = torch.nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
 
         self.output_proj = torch.nn.Linear(d_model, latent_dim)
@@ -75,9 +73,7 @@ class TemporalTransformer(MemoryModel):
         memory_in = self.seq_buffer.clone()  # Clone buffer (already detached entries)
         memory_in[:, -1] = x.squeeze(1)  # Replace last with grad-connected tensor
 
-        mask = torch.arange(self.max_len, device=device).unsqueeze(0) >= self.seq_lengths.unsqueeze(
-            1
-        )
+        mask = torch.arange(self.max_len, device=device).unsqueeze(0) >= self.seq_lengths.unsqueeze(1)
 
         memory_out = self.transformer(memory_in, src_key_padding_mask=mask)
 
@@ -99,9 +95,7 @@ class TemporalTransformer(MemoryModel):
         z_next = self.output_proj(x)  # (B, latent_dim)
         return z_next
 
-    def forward(
-        self, z_t: torch.Tensor, a_prev: torch.Tensor, a_t: torch.Tensor
-    ) -> tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, z_t: torch.Tensor, a_prev: torch.Tensor, a_t: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Full step:
           h_t = update_memory(z_t, a_prev)

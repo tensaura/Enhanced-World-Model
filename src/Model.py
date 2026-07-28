@@ -11,9 +11,7 @@ class Model(Module):
         super().__init__()
 
     @abc.abstractmethod
-    def forward(
-        self, *args: Any, **kwargs: Any
-    ) -> tuple[torch.Tensor, ...] | torch.Tensor | dict[str, torch.Tensor]:
+    def forward(self, *args: Any, **kwargs: Any) -> tuple[torch.Tensor, ...] | torch.Tensor | dict[str, torch.Tensor]:
         """
         Forward pass. Must be implemented in subclasses.
 
@@ -35,13 +33,7 @@ class Model(Module):
 
         :param path: Path to save the model checkpoint (.pt file)
         """
-        torch.save(
-            {
-                "state_dict": self.state_dict(),
-                "hyperparam": self.export_hyperparams(),
-            },
-            path,
-        )
+        torch.save({"state_dict": self.state_dict(), "hyperparam": self.export_hyperparams()}, path)
 
     @abc.abstractmethod
     def load(cls, *args: Any, **kwargs: Any) -> None:

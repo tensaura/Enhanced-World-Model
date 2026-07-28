@@ -5,7 +5,7 @@ from __future__ import annotations
 import copy
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable
+from collections.abc import Callable
 
 import torch
 import torch.nn as nn
@@ -197,11 +197,7 @@ class WorldModel(nn.Module):
         kl_dyn = torch.clamp(kl_dyn, min=cfg.free_bits).mean()
         kl_rep = torch.clamp(kl_rep, min=cfg.free_bits).mean()
 
-        total = (
-            cfg.beta_pred * (recon_loss + reward_loss + cont_loss)
-            + cfg.beta_dyn * kl_dyn
-            + cfg.beta_rep * kl_rep
-        )
+        total = cfg.beta_pred * (recon_loss + reward_loss + cont_loss) + cfg.beta_dyn * kl_dyn + cfg.beta_rep * kl_rep
 
         extra_metrics: dict[str, float] = {}
         if recon_hook is not None:
@@ -266,9 +262,7 @@ class Dreamer(nn.Module):
 
     # ------------------------------------------------------------- imagination
 
-    def imagine(
-        self, start: dict[str, torch.Tensor], horizon: int
-    ) -> tuple[torch.Tensor, torch.Tensor]:
+    def imagine(self, start: dict[str, torch.Tensor], horizon: int) -> tuple[torch.Tensor, torch.Tensor]:
         """Roll the actor forward in latent space from ``start`` states.
 
         Returns ``(feats, actions)`` with shapes ``(H + 1, N, feat)`` and ``(H, N, A)``.
@@ -298,9 +292,7 @@ class Dreamer(nn.Module):
         scale = torch.clamp(self.ret_hi - self.ret_lo, min=1.0)
         return scale
 
-    def actor_critic_loss(
-        self, start: dict[str, torch.Tensor]
-    ) -> tuple[torch.Tensor, torch.Tensor, dict]:
+    def actor_critic_loss(self, start: dict[str, torch.Tensor]) -> tuple[torch.Tensor, torch.Tensor, dict]:
         """Imagine from ``start`` states and compute actor and critic losses."""
         cfg = self.cfg
         feats, actions = self.imagine(start, cfg.horizon)  # (H+1,N,F), (H,N,A)
@@ -333,9 +325,7 @@ class Dreamer(nn.Module):
             # bootstrap values are detached so critic params stay out of the actor update.
             reward_g = self.wm.reward_head(feats[1:]).mean().squeeze(-1)
             cont_g = self.wm.continue_head(feats[1:]).mean
-            returns_g = lambda_return(
-                reward_g, slow_values.detach(), (cfg.gamma * cont_g), cfg.lambda_
-            )
+            returns_g = lambda_return(reward_g, slow_values.detach(), (cfg.gamma * cont_g), cfg.lambda_)
             actor_loss = -(returns_g / scale).mean()
         actor_loss = actor_loss - cfg.entropy_scale * entropy.mean()
 
@@ -357,9 +347,7 @@ class Dreamer(nn.Module):
     @torch.no_grad()
     def update_slow_critic(self) -> None:
         tau = self.cfg.slow_critic_tau
-        for slow, fast in zip(
-            self.slow_critic.parameters(), self.critic.parameters(), strict=False
-        ):
+        for slow, fast in zip(self.slow_critic.parameters(), self.critic.parameters(), strict=False):
             slow.data.mul_(1 - tau).add_(fast.data, alpha=tau)
 
     # -------------------------------------------------------------- save / load

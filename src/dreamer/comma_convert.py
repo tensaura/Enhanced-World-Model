@@ -71,8 +71,9 @@ def convert(camera_path: Path, log_path: Path, out_dir: Path, max_frames: int = 
     with h5py.File(camera_path, "r") as cam, h5py.File(log_path, "r") as log:
         X = cam["X"]
         n = X.shape[0] if not max_frames else min(X.shape[0], max_frames)
-        logger.info(f"{camera_path.name}: {X.shape[0]} frames at 20 Hz "
-                    f"(~{X.shape[0] / 20 / 60:.0f} min), converting {n}")
+        logger.info(
+            f"{camera_path.name}: {X.shape[0]} frames at 20 Hz (~{X.shape[0] / 20 / 60:.0f} min), converting {n}"
+        )
         steer_deg, speed_ms = per_frame_signals(log, X.shape[0])
 
         ep = 0
@@ -91,12 +92,13 @@ def convert(camera_path: Path, log_path: Path, out_dir: Path, max_frames: int = 
             # action[t] led INTO frame[t]: controls measured at the previous frame.
             actions[1:, 0] = steer_n[:-1]
             actions[1:, 1] = speed_n[:-1]
-            np.savez_compressed(out_dir / f"comma_{camera_path.stem}_{ep:03d}.npz",
-                                frames=frames, actions=actions)
+            np.savez_compressed(out_dir / f"comma_{camera_path.stem}_{ep:03d}.npz", frames=frames, actions=actions)
             ep += 1
-            logger.info(f"  chunk @{start}: saved episode {ep} "
-                        f"(mean speed {speeds.mean():.1f} m/s, "
-                        f"|steer| p95 {np.percentile(np.abs(steer_n), 95):.2f})")
+            logger.info(
+                f"  chunk @{start}: saved episode {ep} "
+                f"(mean speed {speeds.mean():.1f} m/s, "
+                f"|steer| p95 {np.percentile(np.abs(steer_n), 95):.2f})"
+            )
     logger.info(f"Done: {ep} episodes in {out_dir}")
 
 

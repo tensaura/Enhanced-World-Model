@@ -55,11 +55,7 @@ def auto_batch_size(env_name: str) -> int:
     return n
 
 
-def state_transform(
-    state: np.ndarray,
-    is_image_based: bool,
-    device: torch.device,
-) -> torch.Tensor:
+def state_transform(state: np.ndarray, is_image_based: bool, device: torch.device) -> torch.Tensor:
     """
     Convert a numpy observation from a Gymnasium environment into a normalized
     PyTorch tensor ready for the world model.

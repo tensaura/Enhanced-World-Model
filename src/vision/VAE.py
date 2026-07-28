@@ -105,13 +105,9 @@ class VAE(VisionModel):
             nn.Conv2d(embed_dim, hidden_dim, kernel_size=3, padding=1),
             ResidualBlock(hidden_dim),
             ResidualBlock(hidden_dim),
-            nn.ConvTranspose2d(
-                hidden_dim, hidden_dim, kernel_size=kernel_size, stride=stride, padding=1
-            ),
+            nn.ConvTranspose2d(hidden_dim, hidden_dim, kernel_size=kernel_size, stride=stride, padding=1),
             nn.ReLU(),
-            nn.ConvTranspose2d(
-                hidden_dim, output_dim, kernel_size=kernel_size, stride=stride, padding=1
-            ),
+            nn.ConvTranspose2d(hidden_dim, output_dim, kernel_size=kernel_size, stride=stride, padding=1),
         )
 
     def reparameterize(self, mu: torch.Tensor, log_var: torch.Tensor) -> torch.Tensor:

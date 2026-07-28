@@ -28,13 +28,7 @@ class DeepDiscreteController(ControllerModel):
     tags = frozenset({ControllerTag.DISCRETE, ControllerTag.STOCHASTIC})
 
     def __init__(
-        self,
-        z_dim: int,
-        h_dim: int,
-        action_dim: int,
-        hidden_dim: int = 128,
-        num_layers: int = 2,
-        **_kwargs: Any,
+        self, z_dim: int, h_dim: int, action_dim: int, hidden_dim: int = 128, num_layers: int = 2, **_kwargs: Any
     ) -> None:
         super().__init__()
 
@@ -60,18 +54,10 @@ class DeepDiscreteController(ControllerModel):
         self.shared_features = nn.Sequential(*layers)
 
         # Actor head (policy)
-        self.actor = nn.Sequential(
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, action_dim),
-        )
+        self.actor = nn.Sequential(nn.Linear(hidden_dim, hidden_dim), nn.ReLU(), nn.Linear(hidden_dim, action_dim))
 
         # Critic head (value function)
-        self.critic = nn.Sequential(
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, 1),
-        )
+        self.critic = nn.Sequential(nn.Linear(hidden_dim, hidden_dim), nn.ReLU(), nn.Linear(hidden_dim, 1))
 
         # Apply orthogonal initialization
         self._init_weights()
@@ -107,9 +93,7 @@ class DeepDiscreteController(ControllerModel):
 
         return action, log_prob, value, entropy
 
-    def evaluate_actions(
-        self, z_t: torch.Tensor, h_t: torch.Tensor, actions: torch.Tensor
-    ) -> tuple[Any, Any, Any]:
+    def evaluate_actions(self, z_t: torch.Tensor, h_t: torch.Tensor, actions: torch.Tensor) -> tuple[Any, Any, Any]:
         """Evaluate log probability and entropy for given actions."""
         x = torch.cat([z_t, h_t], dim=-1)
         features = self.shared_features(x)

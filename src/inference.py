@@ -26,11 +26,7 @@ torch.set_default_device(device)
 
 
 def evaluate(
-    model: WorldModel,
-    env_name: str,
-    num_episodes: int = 5,
-    device: torch.device = device,
-    render_mode: str = "human",
+    model: WorldModel, env_name: str, num_episodes: int = 5, device: torch.device = device, render_mode: str = "human"
 ) -> list[dict[str, Any]]:
     """Evaluate trained model and show sample frames."""
     env = gym.make(env_name, render_mode=render_mode)
@@ -93,9 +89,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Evaluate a trained WorldModel")
     parser.add_argument("--load-path", type=str, required=True, help="Path to model checkpoint")
-    parser.add_argument(
-        "--env", type=str, required=True, help="Environment name (e.g., CartPole-v1)"
-    )
+    parser.add_argument("--env", type=str, required=True, help="Environment name (e.g., CartPole-v1)")
     parser.add_argument("--episodes", type=int, default=5, help="Number of episodes to run")
     parser.add_argument("--render-mode", type=str, default="human", help="Render mode")
     args = parser.parse_args()
@@ -134,6 +128,4 @@ if __name__ == "__main__":
 
     world_model.load(args.load_path, obs_space=obs_space, action_space=action_space, device=device)
 
-    results = evaluate(
-        world_model, args.env, num_episodes=args.episodes, render_mode=args.render_mode
-    )
+    results = evaluate(world_model, args.env, num_episodes=args.episodes, render_mode=args.render_mode)

@@ -24,12 +24,7 @@ def describe_action_space(space: Any) -> dict:
         return {"type": "Box", "shape": space.shape, "low": space.low, "high": space.high}
 
     elif isinstance(space, gym.spaces.MultiDiscrete):
-        return {
-            "type": "MultiDiscrete",
-            "nvec": space.nvec,
-            "low": np.zeros_like(space.nvec),
-            "high": space.nvec - 1,
-        }
+        return {"type": "MultiDiscrete", "nvec": space.nvec, "low": np.zeros_like(space.nvec), "high": space.nvec - 1}
 
     elif isinstance(space, gym.spaces.MultiBinary):
         return {
@@ -43,10 +38,7 @@ def describe_action_space(space: Any) -> dict:
         return {"type": "Tuple", "spaces": [describe_action_space(s) for s in space.spaces]}
 
     elif isinstance(space, gym.spaces.Dict):
-        return {
-            "type": "Dict",
-            "spaces": {k: describe_action_space(v) for k, v in space.spaces.items()},
-        }
+        return {"type": "Dict", "spaces": {k: describe_action_space(v) for k, v in space.spaces.items()}}
 
     else:
         return {"type": "Unknown", "details": str(space)}
@@ -60,12 +52,8 @@ def squash_to_action_space(tanh_action: torch.Tensor, action_space: Any) -> torc
     This function performs the final affine remap — no extra tanh needed.
     """
     decrypted_action_space = describe_action_space(action_space)
-    low = torch.as_tensor(
-        decrypted_action_space["low"], dtype=torch.float32, device=tanh_action.device
-    )
-    high = torch.as_tensor(
-        decrypted_action_space["high"], dtype=torch.float32, device=tanh_action.device
-    )
+    low = torch.as_tensor(decrypted_action_space["low"], dtype=torch.float32, device=tanh_action.device)
+    high = torch.as_tensor(decrypted_action_space["high"], dtype=torch.float32, device=tanh_action.device)
     # Linear rescale: [-1, 1] → [low, high]
     scaled = 0.5 * ((tanh_action + 1) * (high - low)) + low
     return scaled
@@ -95,9 +83,7 @@ class WorldModel(Model):
         self.memory_d_model = getattr(self.memory, "d_model", memory_args.get("d_model", 128))
         self.action_dim = controller_args["action_dim"]
         controller_h_dim = self.memory_d_model
-        self.controller = controller_model(
-            z_dim=self.vision.embed_dim, h_dim=controller_h_dim, **controller_args
-        )
+        self.controller = controller_model(z_dim=self.vision.embed_dim, h_dim=controller_h_dim, **controller_args)
 
         self.a_prev = None
 
@@ -136,9 +122,7 @@ class WorldModel(Model):
             sample_shape = np.shape(action_space.sample())
             if sample_shape == ():
                 sample_shape = (self.action_dim,)
-            self.a_prev = torch.zeros(
-                (input.shape[0], *sample_shape), device=input.device, dtype=torch.float32
-            )
+            self.a_prev = torch.zeros((input.shape[0], *sample_shape), device=input.device, dtype=torch.float32)
 
         h_t = self.memory.update_memory(z_t, self.a_prev)
 
@@ -151,9 +135,7 @@ class WorldModel(Model):
             action = action.to(device)
             log_probs = log_probs.to(device)
 
-            a_prev_onehot = (
-                torch.nn.functional.one_hot(action.long(), num_classes=n).float().to(device)
-            )
+            a_prev_onehot = torch.nn.functional.one_hot(action.long(), num_classes=n).float().to(device)
             self.a_prev = a_prev_onehot.detach()
 
             z_next_pred = self.memory.predict_next(z_t, self.a_prev, h_t)
@@ -243,12 +225,7 @@ class WorldModel(Model):
         self.patch_load(path, "vmc", obs_space, action_space, device)
 
     def patch_load(
-        self,
-        patch_path: Path,
-        patches: str,
-        obs_space: Any,
-        action_space: Any,
-        device: torch.device,
+        self, patch_path: Path, patches: str, obs_space: Any, action_space: Any, device: torch.device
     ) -> None:
         # TODO: Check input/output shape consistencies between components before loading the weights ?
         saved_dict = torch.load(patch_path, weights_only=False, map_location=device)
@@ -258,9 +235,7 @@ class WorldModel(Model):
 
         if "v" in patches:
             if saved_dict["obs_space"] != obs_space:
-                print(
-                    "\nObservation space of the vision to load does not match those of the current environment.\n"
-                )
+                print("\nObservation space of the vision to load does not match those of the current environment.\n")
             self.vision = VISION_REGISTRY[saved_dict["vision_model"]](**saved_dict["vision_args"])
             self.vision.load(saved_dict["vision_dict"])
 
@@ -270,12 +245,8 @@ class WorldModel(Model):
 
         if "c" in patches:
             if saved_dict["action_space"] != action_space:
-                print(
-                    "\nAction space of the controller to load does not match those of the current environment.\n"
-                )
-            self.controller = CONTROLLER_REGISTRY[saved_dict["controller_model"]](
-                **saved_dict["controller_args"]
-            )
+                print("\nAction space of the controller to load does not match those of the current environment.\n")
+            self.controller = CONTROLLER_REGISTRY[saved_dict["controller_model"]](**saved_dict["controller_args"])
             self.controller.load(saved_dict["controller_dict"])
 
 

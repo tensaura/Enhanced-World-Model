@@ -6,19 +6,13 @@ def test_main_fast(monkeypatch, main_input_args):
     TODO: Bypass PPO completely for this test to run faster."""
 
     for correct_args in main_input_args["correct"]:
-        monkeypatch.setattr(
-            "sys.argv",
-            correct_args + ["--epochs", "1", "--ppo-epochs", "1", "--rollout-steps", "1"],
-        )
+        monkeypatch.setattr("sys.argv", correct_args + ["--epochs", "1", "--ppo-epochs", "1", "--rollout-steps", "1"])
         from main import main
 
         main()
 
     for incorrect_args in main_input_args["error"]:
-        monkeypatch.setattr(
-            "sys.argv",
-            incorrect_args + ["--epochs", "1", "--ppo-epochs", "1", "--rollout-steps", "1"],
-        )
+        monkeypatch.setattr("sys.argv", incorrect_args + ["--epochs", "1", "--ppo-epochs", "1", "--rollout-steps", "1"])
         from main import main
 
         with pytest.raises(RuntimeError):

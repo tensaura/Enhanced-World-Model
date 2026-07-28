@@ -40,9 +40,7 @@ def _mlp_layers(in_dim: int, hidden: int, layers: int, norm: bool) -> list[nn.Mo
 class MLP(nn.Module):
     """SiLU + LayerNorm MLP with a linear output head."""
 
-    def __init__(
-        self, in_dim: int, out_dim: int, hidden: int = 256, layers: int = 2, norm: bool = True
-    ) -> None:
+    def __init__(self, in_dim: int, out_dim: int, hidden: int = 256, layers: int = 2, norm: bool = True) -> None:
         super().__init__()
         mods = _mlp_layers(in_dim, hidden, layers, norm)
         mods.append(nn.Linear(hidden, out_dim))
@@ -301,17 +299,13 @@ class RSSM(Dynamics):
         self.unimix = unimix
 
         # Pre-GRU projection of (stoch, action).
-        self.img_in = nn.Sequential(
-            nn.Linear(self.stoch_dim + action_dim, hidden), nn.LayerNorm(hidden), nn.SiLU()
-        )
+        self.img_in = nn.Sequential(nn.Linear(self.stoch_dim + action_dim, hidden), nn.LayerNorm(hidden), nn.SiLU())
         self.gru = nn.GRUCell(hidden, deter_dim)
         # Prior  p(z_t | h_t).
         self.img_out = nn.Sequential(nn.Linear(deter_dim, hidden), nn.LayerNorm(hidden), nn.SiLU())
         self.prior_logits = nn.Linear(hidden, self.stoch_dim)
         # Posterior q(z_t | h_t, e_t).
-        self.obs_out = nn.Sequential(
-            nn.Linear(deter_dim + embed_dim, hidden), nn.LayerNorm(hidden), nn.SiLU()
-        )
+        self.obs_out = nn.Sequential(nn.Linear(deter_dim + embed_dim, hidden), nn.LayerNorm(hidden), nn.SiLU())
         self.post_logits = nn.Linear(hidden, self.stoch_dim)
 
     @property
@@ -322,9 +316,7 @@ class RSSM(Dynamics):
         return {
             "deter": torch.zeros(batch_size, self.deter_dim, device=device),
             "stoch": torch.zeros(batch_size, self.stoch_dim, device=device),
-            "logits": torch.zeros(
-                batch_size, self.num_categoricals, self.num_classes, device=device
-            ),
+            "logits": torch.zeros(batch_size, self.num_categoricals, self.num_classes, device=device),
         }
 
     def get_feat(self, state: dict[str, torch.Tensor]) -> torch.Tensor:
@@ -337,16 +329,12 @@ class RSSM(Dynamics):
         sample = self.get_dist(logits).sample()  # (B, num_cat, num_classes)
         return sample.reshape(sample.shape[0], -1)
 
-    def img_step(
-        self, prev_state: dict[str, torch.Tensor], prev_action: torch.Tensor
-    ) -> dict[str, torch.Tensor]:
+    def img_step(self, prev_state: dict[str, torch.Tensor], prev_action: torch.Tensor) -> dict[str, torch.Tensor]:
         """Advance the prior one step (used in imagination, no observation)."""
         x = torch.cat([prev_state["stoch"], prev_action], dim=-1)
         x = self.img_in(x)
         deter = self.gru(x, prev_state["deter"])
-        logits = self.prior_logits(self.img_out(deter)).reshape(
-            -1, self.num_categoricals, self.num_classes
-        )
+        logits = self.prior_logits(self.img_out(deter)).reshape(-1, self.num_categoricals, self.num_classes)
         stoch = self._sample_stoch(logits)
         return {"deter": deter, "stoch": stoch, "logits": logits}
 
@@ -365,9 +353,7 @@ class RSSM(Dynamics):
 
         prior = self.img_step(prev_state, prev_action)
         x = torch.cat([prior["deter"], embed], dim=-1)
-        logits = self.post_logits(self.obs_out(x)).reshape(
-            -1, self.num_categoricals, self.num_classes
-        )
+        logits = self.post_logits(self.obs_out(x)).reshape(-1, self.num_categoricals, self.num_classes)
         stoch = self._sample_stoch(logits)
         post = {"deter": prior["deter"], "stoch": stoch, "logits": logits}
         return post, prior
@@ -467,13 +453,7 @@ class Actor(ActorBase):
 
     @classmethod
     def from_config(cls, cfg: Any, feat_dim: int) -> Actor:
-        return cls(
-            feat_dim,
-            cfg.action_dim,
-            discrete=cfg.is_discrete,
-            hidden=cfg.hidden,
-            layers=cfg.mlp_layers,
-        )
+        return cls(feat_dim, cfg.action_dim, discrete=cfg.is_discrete, hidden=cfg.hidden, layers=cfg.mlp_layers)
 
 
 class Critic(CriticBase):

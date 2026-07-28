@@ -58,9 +58,7 @@ FONT_S = cv2.FONT_HERSHEY_SIMPLEX
 
 def _chip_name() -> str:
     try:
-        out = subprocess.run(
-            ["sysctl", "-n", "machdep.cpu.brand_string"], capture_output=True, text=True
-        )
+        out = subprocess.run(["sysctl", "-n", "machdep.cpu.brand_string"], capture_output=True, text=True)
         if out.returncode == 0 and out.stdout.strip():
             return out.stdout.strip()
     except OSError:
@@ -184,8 +182,7 @@ def _run_episode(
     record: bool = False,
 ) -> tuple[float, list[dict]]:
     """Greedy episode on a fixed track seed. With ``record``, returns per-step frames."""
-    env = DreamerEnv(env_name, action_repeat=action_repeat, seed=seed,
-                     render_mode="rgb_array" if record else None)
+    env = DreamerEnv(env_name, action_repeat=action_repeat, seed=seed, render_mode="rgb_array" if record else None)
     obs = env.reset()
     state: dict | None = None
     prev_action = torch.zeros(1, env.action_dim, device=device)
@@ -211,13 +208,7 @@ def _run_episode(
 
 @torch.no_grad()
 def _run_dream(
-    agent: Dreamer,
-    env_name: str,
-    seed: int,
-    device: torch.device,
-    action_repeat: int,
-    context: int,
-    horizon: int,
+    agent: Dreamer, env_name: str, seed: int, device: torch.device, action_repeat: int, context: int, horizon: int
 ) -> list[dict]:
     """Warm up on real frames, then roll the prior open-loop (no observations)."""
     wm, rssm = agent.wm, agent.wm.rssm
@@ -228,7 +219,7 @@ def _run_dream(
     is_first = torch.tensor([1.0], device=device)
     trace: list[dict] = []
 
-    for t in range(context):
+    for _t in range(context):
         embed = wm.encode(wm.preprocess(torch.as_tensor(obs, device=device).unsqueeze(0)))
         state, _ = rssm.obs_step(state, prev_action, embed, is_first)
         feat = rssm.get_feat(state)
@@ -240,7 +231,7 @@ def _run_dream(
         if term or trunc:
             break
 
-    for t in range(horizon):
+    for _t in range(horizon):
         feat = rssm.get_feat(state)
         action = agent.actor(feat).mode()
         real_done = False
@@ -331,8 +322,10 @@ def main() -> None:
     args = parser.parse_args()
 
     device = (
-        torch.device("mps") if torch.backends.mps.is_available()
-        else torch.device("cuda") if torch.cuda.is_available()
+        torch.device("mps")
+        if torch.backends.mps.is_available()
+        else torch.device("cuda")
+        if torch.cuda.is_available()
         else torch.device("cpu")
     )
     agent = Dreamer.load(Path(args.checkpoint), device)
@@ -355,9 +348,7 @@ def main() -> None:
     drive: list[dict] = []
     for k in range(args.seeds):
         seed = args.seed_base + k
-        ret, trace = _run_episode(
-            agent, args.env, seed, device, args.action_repeat, args.max_steps, record=True
-        )
+        ret, trace = _run_episode(agent, args.env, seed, device, args.action_repeat, args.max_steps, record=True)
         returns[seed] = ret
         logger.info(f"Eval seed {seed}: return {ret:.1f}")
         if ret > best_ret:
@@ -369,16 +360,14 @@ def main() -> None:
     )
 
     logger.info("Recording the dream rollout...")
-    dream = _run_dream(agent, args.env, best_seed + 7, device, args.action_repeat,
-                       args.context, args.horizon)
+    dream = _run_dream(agent, args.env, best_seed + 7, device, args.action_repeat, args.context, args.horizon)
 
     # ---- write the video, streaming frames straight to ffmpeg ----
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     mp4_path = out.with_suffix(".mp4")
     writer = imageio.get_writer(
-        mp4_path, fps=FPS, codec="libx264", quality=8, pixelformat="yuv420p",
-        macro_block_size=None,
+        mp4_path, fps=FPS, codec="libx264", quality=8, pixelformat="yuv420p", macro_block_size=None
     )
     badge = f"{chip} | MPS | {latency_ms:.1f} ms/action"
     total_frames = 0

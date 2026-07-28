@@ -31,9 +31,7 @@ class Identity(VisionModel):
         return input
 
     def export_hyperparams(self) -> dict[str, tuple[int]]:
-        return {
-            "input_shape": self.input_shape,
-        }
+        return {"input_shape": self.input_shape}
 
     def save_state(self) -> dict[str, torch.Tensor]:
         return cast(dict[str, Any], self.state_dict())

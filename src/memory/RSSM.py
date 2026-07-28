@@ -70,17 +70,11 @@ class RSSM(MemoryModel):
         self.gru = nn.GRUCell(stoch_dim + action_dim, rnn_dim)
 
         # Prior:     p(z_t | h_t)          → 2*stoch_dim (μ and log-std)
-        self.prior_mlp = nn.Sequential(
-            nn.Linear(rnn_dim, hidden_dim),
-            nn.ELU(),
-            nn.Linear(hidden_dim, 2 * stoch_dim),
-        )
+        self.prior_mlp = nn.Sequential(nn.Linear(rnn_dim, hidden_dim), nn.ELU(), nn.Linear(hidden_dim, 2 * stoch_dim))
 
         # Posterior: q(z_t | h_t, o_t)     → 2*stoch_dim
         self.posterior_mlp = nn.Sequential(
-            nn.Linear(rnn_dim + latent_dim, hidden_dim),
-            nn.ELU(),
-            nn.Linear(hidden_dim, 2 * stoch_dim),
+            nn.Linear(rnn_dim + latent_dim, hidden_dim), nn.ELU(), nn.Linear(hidden_dim, 2 * stoch_dim)
         )
 
         # Project stochastic state back to observation-latent space for predict_next output.
@@ -109,10 +103,7 @@ class RSSM(MemoryModel):
 
     @staticmethod
     def _kl_divergence(
-        mu_post: torch.Tensor,
-        std_post: torch.Tensor,
-        mu_prior: torch.Tensor,
-        std_prior: torch.Tensor,
+        mu_post: torch.Tensor, std_post: torch.Tensor, mu_prior: torch.Tensor, std_prior: torch.Tensor
     ) -> torch.Tensor:
         """
         KL(q || p) where both are diagonal Gaussians.
@@ -174,9 +165,7 @@ class RSSM(MemoryModel):
 
         return torch.cat([h_t, z_t], dim=-1)  # (B, rnn_dim + stoch_dim)
 
-    def predict_next(
-        self, _o_t: torch.Tensor, a_t: torch.Tensor, h_combined: torch.Tensor
-    ) -> torch.Tensor:
+    def predict_next(self, _o_t: torch.Tensor, a_t: torch.Tensor, h_combined: torch.Tensor) -> torch.Tensor:
         """
         Predict the next observation latent using the prior (no observation needed).
         Used for world-model imagination and the memory MSE training loss.
@@ -214,9 +203,7 @@ class RSSM(MemoryModel):
         if self.z_state is not None:
             self.z_state[env_idx].zero_()
 
-    def forward(
-        self, z_t: torch.Tensor, a_prev: torch.Tensor, a_t: torch.Tensor
-    ) -> tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, z_t: torch.Tensor, a_prev: torch.Tensor, a_t: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """Full forward step: update memory then predict next latent."""
         h_combined = self.update_memory(z_t, a_prev)
         z_next = self.predict_next(z_t, a_t, h_combined)

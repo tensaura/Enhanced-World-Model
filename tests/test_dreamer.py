@@ -7,13 +7,7 @@ import torch
 
 from dreamer.models import Dreamer, DreamerConfig
 from dreamer.replay import SequenceReplay
-from dreamer.utils import (
-    OneHotCategoricalST,
-    TwoHotSymlog,
-    lambda_return,
-    symexp,
-    symlog,
-)
+from dreamer.utils import OneHotCategoricalST, TwoHotSymlog, lambda_return, symexp, symlog
 
 
 def _tiny_cfg(is_image: bool, is_discrete: bool) -> DreamerConfig:
@@ -79,13 +73,7 @@ def test_lambda_return_constant_reward():
 def test_replay_sample_shapes():
     rb = SequenceReplay(200, (4,), 2, is_image=False)
     for i in range(120):
-        rb.add(
-            np.random.randn(4).astype("float32"),
-            np.eye(2)[i % 2].astype("float32"),
-            float(i),
-            i % 30 == 0,
-            False,
-        )
+        rb.add(np.random.randn(4).astype("float32"), np.eye(2)[i % 2].astype("float32"), float(i), i % 30 == 0, False)
     assert rb.can_sample(16)
     batch = rb.sample(8, 16, torch.device("cpu"))
     assert batch["obs"].shape == (8, 16, 4)
@@ -135,13 +123,7 @@ def test_full_train_step(is_image, is_discrete):
             if is_image
             else np.random.randn(*cfg.obs_shape).astype("float32")
         )
-        rb.add(
-            obs,
-            np.random.randn(cfg.action_dim).astype("float32"),
-            float(np.random.randn()),
-            i % 20 == 0,
-            False,
-        )
+        rb.add(obs, np.random.randn(cfg.action_dim).astype("float32"), float(np.random.randn()), i % 20 == 0, False)
     batch = rb.sample(2, 6, torch.device("cpu"))
 
     wm_loss, _, post = agent.wm.loss(batch)

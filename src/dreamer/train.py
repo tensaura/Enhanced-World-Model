@@ -63,9 +63,7 @@ def train_dreamer(
     np.random.seed(seed)
 
     env_kwargs = {"domain_randomize": True} if domain_randomize else None
-    envs = DreamerVecEnv(
-        env_name, num_envs, action_repeat=action_repeat, seed=seed, env_kwargs=env_kwargs
-    )
+    envs = DreamerVecEnv(env_name, num_envs, action_repeat=action_repeat, seed=seed, env_kwargs=env_kwargs)
     logger.info(
         f"Dreamer on {env_name} x{num_envs} | image={envs.is_image} discrete={envs.is_discrete} "
         f"obs={envs.obs_shape} action_dim={envs.action_dim} action_repeat={action_repeat} "
@@ -96,11 +94,7 @@ def train_dreamer(
     critic_opt = torch.optim.Adam(agent.critic.parameters(), lr=cfg.critic_lr, eps=cfg.eps)
 
     replay = VecSequenceReplay(
-        max(replay_capacity // num_envs, seq_len * 4),
-        num_envs,
-        tuple(envs.obs_shape),
-        envs.action_dim,
-        envs.is_image,
+        max(replay_capacity // num_envs, seq_len * 4), num_envs, tuple(envs.obs_shape), envs.action_dim, envs.is_image
     )
 
     writer = None
@@ -261,8 +255,9 @@ if __name__ == "__main__":
     parser.add_argument("--deter-dim", type=int, default=256)
     parser.add_argument("--cnn-depth", type=int, default=32)
     parser.add_argument("--entropy-scale", type=float, default=1e-3)
-    parser.add_argument("--num-envs", type=int, default=1,
-                        help="Parallel data-collection environments (subprocesses when > 1).")
+    parser.add_argument(
+        "--num-envs", type=int, default=1, help="Parallel data-collection environments (subprocesses when > 1)."
+    )
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--save-path", type=str, default="./saved_models/")
     parser.add_argument("--load-path", type=str, default="")

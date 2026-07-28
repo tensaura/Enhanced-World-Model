@@ -16,13 +16,7 @@ import torch
 
 
 class SequenceReplay:
-    def __init__(
-        self,
-        capacity: int,
-        obs_shape: tuple[int, ...],
-        action_dim: int,
-        is_image: bool,
-    ) -> None:
+    def __init__(self, capacity: int, obs_shape: tuple[int, ...], action_dim: int, is_image: bool) -> None:
         self.capacity = capacity
         self.action_dim = action_dim
         obs_dtype = np.uint8 if is_image else np.float32
@@ -35,14 +29,7 @@ class SequenceReplay:
         self.size = 0
         self.wrapped = False
 
-    def add(
-        self,
-        obs: np.ndarray,
-        action: np.ndarray,
-        reward: float,
-        is_first: bool,
-        is_terminal: bool,
-    ) -> None:
+    def add(self, obs: np.ndarray, action: np.ndarray, reward: float, is_first: bool, is_terminal: bool) -> None:
         i = self.ptr
         self.obs[i] = obs
         self.action[i] = action
@@ -57,9 +44,7 @@ class SequenceReplay:
     def can_sample(self, seq_len: int) -> bool:
         return self.size > seq_len + 1
 
-    def sample(
-        self, batch_size: int, seq_len: int, device: torch.device
-    ) -> dict[str, torch.Tensor]:
+    def sample(self, batch_size: int, seq_len: int, device: torch.device) -> dict[str, torch.Tensor]:
         high = self.size - seq_len
         starts = np.empty(batch_size, dtype=np.int64)
         count = 0
@@ -92,12 +77,7 @@ class VecSequenceReplay:
     """
 
     def __init__(
-        self,
-        capacity_per_env: int,
-        num_envs: int,
-        obs_shape: tuple[int, ...],
-        action_dim: int,
-        is_image: bool,
+        self, capacity_per_env: int, num_envs: int, obs_shape: tuple[int, ...], action_dim: int, is_image: bool
     ) -> None:
         self.capacity = capacity_per_env
         self.num_envs = num_envs
@@ -113,12 +93,7 @@ class VecSequenceReplay:
         self.wrapped = False
 
     def add_batch(
-        self,
-        obs: np.ndarray,
-        action: np.ndarray,
-        reward: np.ndarray,
-        is_first: np.ndarray,
-        is_terminal: np.ndarray,
+        self, obs: np.ndarray, action: np.ndarray, reward: np.ndarray, is_first: np.ndarray, is_terminal: np.ndarray
     ) -> None:
         """Write one row: the current transition of every env, shapes (N, ...)."""
         i = self.ptr
@@ -135,9 +110,7 @@ class VecSequenceReplay:
     def can_sample(self, seq_len: int) -> bool:
         return self.size > seq_len + 1
 
-    def sample(
-        self, batch_size: int, seq_len: int, device: torch.device
-    ) -> dict[str, torch.Tensor]:
+    def sample(self, batch_size: int, seq_len: int, device: torch.device) -> dict[str, torch.Tensor]:
         high = self.size - seq_len
         starts = np.empty(batch_size, dtype=np.int64)
         count = 0

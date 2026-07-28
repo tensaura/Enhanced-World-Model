@@ -36,9 +36,7 @@ logger = logging.getLogger(__name__)
 PANEL = 256
 
 
-def _label(
-    img: np.ndarray, text: str, org: tuple[int, int], color: tuple[int, int, int] = (255, 255, 255)
-) -> None:
+def _label(img: np.ndarray, text: str, org: tuple[int, int], color: tuple[int, int, int] = (255, 255, 255)) -> None:
     cv2.putText(img, text, org, cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 3, cv2.LINE_AA)
     cv2.putText(img, text, org, cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 1, cv2.LINE_AA)
 
@@ -47,13 +45,7 @@ def _panel(rgb: np.ndarray) -> np.ndarray:
     return cv2.resize(rgb, (PANEL, PANEL), interpolation=cv2.INTER_NEAREST)
 
 
-def _compose(
-    real: np.ndarray,
-    dream: np.ndarray,
-    phase: str,
-    step: int,
-    dream_reward: float,
-) -> np.ndarray:
+def _compose(real: np.ndarray, dream: np.ndarray, phase: str, step: int, dream_reward: float) -> np.ndarray:
     left = _panel(real)
     _label(left, "reality (same actions)", (8, 22))
     dream_u8 = (np.clip(dream, 0, 1) * 255).astype(np.uint8)
@@ -66,11 +58,7 @@ def _compose(
     frame = np.concatenate([left, right], axis=1)
     bar = np.full((34, frame.shape[1], 3), 20, dtype=np.uint8)
     frame = np.concatenate([frame, bar], axis=0)
-    _label(
-        frame,
-        f"{phase}  step {step:3d}   imagined reward {dream_reward:+5.2f}",
-        (8, frame.shape[0] - 11),
-    )
+    _label(frame, f"{phase}  step {step:3d}   imagined reward {dream_reward:+5.2f}", (8, frame.shape[0] - 11))
     return frame
 
 

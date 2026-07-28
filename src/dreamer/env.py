@@ -69,9 +69,7 @@ class DreamerEnv:
     def _process(self, obs: np.ndarray) -> np.ndarray:
         if self.is_image:
             if obs.shape[0] != self.image_size or obs.shape[1] != self.image_size:
-                obs = cv2.resize(
-                    obs, (self.image_size, self.image_size), interpolation=cv2.INTER_AREA
-                )
+                obs = cv2.resize(obs, (self.image_size, self.image_size), interpolation=cv2.INTER_AREA)
             return obs.astype(np.uint8)
         return obs.astype(np.float32)
 
@@ -125,7 +123,7 @@ class _ActionRepeat(gym.Wrapper):
         super().__init__(env)
         self._repeat = repeat
 
-    def step(self, action):  # type: ignore[override]
+    def step(self, action):
         total = 0.0
         obs, term, trunc, info = None, False, False, {}
         for _ in range(self._repeat):
@@ -144,9 +142,7 @@ class _ResizeImage(gym.ObservationWrapper):
         assert env.observation_space.shape is not None
         channels = env.observation_space.shape[2]
         self._size = size
-        self.observation_space = gym.spaces.Box(
-            0, 255, (size, size, channels), dtype=np.uint8
-        )
+        self.observation_space = gym.spaces.Box(0, 255, (size, size, channels), dtype=np.uint8)
 
     def observation(self, obs: np.ndarray) -> np.ndarray:
         if obs.shape[0] != self._size or obs.shape[1] != self._size:
@@ -227,9 +223,7 @@ class DreamerVecEnv:
         self._seed += self.num_envs
         return self._process(obs)
 
-    def step(
-        self, policy_actions: np.ndarray
-    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    def step(self, policy_actions: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         obs, rewards, term, trunc, _ = self.envs.step(self.to_env_actions(policy_actions))
         return self._process(obs), rewards.astype(np.float32), term, trunc
 

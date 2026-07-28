@@ -48,13 +48,7 @@ class TwoHotSymlog:
     :meth:`log_prob`.
     """
 
-    def __init__(
-        self,
-        logits: torch.Tensor,
-        low: float = -20.0,
-        high: float = 20.0,
-        num_bins: int = 255,
-    ) -> None:
+    def __init__(self, logits: torch.Tensor, low: float = -20.0, high: float = 20.0, num_bins: int = 255) -> None:
         self.logits = logits
         self.low = low
         self.high = high
@@ -150,10 +144,7 @@ def categorical_kl(logits_q: torch.Tensor, logits_p: torch.Tensor) -> torch.Tens
 
 
 def lambda_return(
-    rewards: torch.Tensor,
-    values: torch.Tensor,
-    continues: torch.Tensor,
-    lambda_: float = 0.95,
+    rewards: torch.Tensor, values: torch.Tensor, continues: torch.Tensor, lambda_: float = 0.95
 ) -> torch.Tensor:
     """Compute TD(λ) returns over an imagined trajectory.
 

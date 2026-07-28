@@ -57,12 +57,7 @@ def _sparkline(history: list[float], width: int, height: int = 90) -> np.ndarray
 
 
 def compose(
-    real: np.ndarray,
-    recon: np.ndarray | None,
-    step: int,
-    ep: int,
-    ep_reward: float,
-    history: list[float],
+    real: np.ndarray, recon: np.ndarray | None, step: int, ep: int, ep_reward: float, history: list[float]
 ) -> np.ndarray:
     panels = [_to_panel(real)]
     _label(panels[0], "environment", (8, 22))

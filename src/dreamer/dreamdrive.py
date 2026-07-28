@@ -67,8 +67,15 @@ def _text(img, s, org, scale=0.6, color=FG, thickness=1, font=FONT_S):
 class DreamSession:
     """The world-model-only game state: latent, decode, reward — no environment."""
 
-    def __init__(self, checkpoint: str, env_name: str, device: torch.device,
-                 level_seeds: list[int], context: int = 20, action_repeat: int = 2) -> None:
+    def __init__(
+        self,
+        checkpoint: str,
+        env_name: str,
+        device: torch.device,
+        level_seeds: list[int],
+        context: int = 20,
+        action_repeat: int = 2,
+    ) -> None:
         self.device = device
         self.agent = Dreamer.load(Path(checkpoint), device)
         self.agent.eval()
@@ -90,8 +97,7 @@ class DreamSession:
         """Ground a start latent: the trained actor drives ``drive_steps`` into
         the real track (following real curves), then lifts off the gas for a few
         steps so the player spawns in a slow car — then the env is discarded."""
-        env = DreamerEnv(self.env_name, action_repeat=self.action_repeat,
-                         seed=seed, render_mode=None)
+        env = DreamerEnv(self.env_name, action_repeat=self.action_repeat, seed=seed, render_mode=None)
         if self.action_dim < 0:
             self.action_dim = env.action_dim
         obs = env.reset()
@@ -99,9 +105,7 @@ class DreamSession:
         prev_action = torch.zeros(1, env.action_dim, device=self.device)
         is_first = torch.tensor([1.0], device=self.device)
         for t in range(drive_steps + coast_steps):
-            embed = self.wm.encode(
-                self.wm.preprocess(torch.as_tensor(obs, device=self.device).unsqueeze(0))
-            )
+            embed = self.wm.encode(self.wm.preprocess(torch.as_tensor(obs, device=self.device).unsqueeze(0)))
             state, _ = self.rssm.obs_step(state, prev_action, embed, is_first)
             if t < drive_steps:
                 action = self.agent.actor(self.rssm.get_feat(state)).mode()
@@ -157,8 +161,7 @@ class DreamSession:
     @torch.no_grad()
     def step(self, action_vec: np.ndarray) -> tuple[np.ndarray, float, np.ndarray]:
         """Advance the dream one step. Returns (frame64 rgb u8, imagined reward, action)."""
-        action = torch.as_tensor(action_vec, dtype=torch.float32,
-                                 device=self.device).unsqueeze(0)
+        action = torch.as_tensor(action_vec, dtype=torch.float32, device=self.device).unsqueeze(0)
         self.state = self.rssm.img_step(self.state, action)
         feat = self.rssm.get_feat(self.state)
         img = self.wm.decode_obs(self.wm.decoder(feat))[0].cpu().numpy()
@@ -175,8 +178,7 @@ class DreamSession:
 # ------------------------------------------------------------------- rendering
 
 
-def _draw_arrow_pad(frame: np.ndarray, x: int, y: int, steer: float, gas: float,
-                    brake: float) -> None:
+def _draw_arrow_pad(frame: np.ndarray, x: int, y: int, steer: float, gas: float, brake: float) -> None:
     """Visual keyboard: arrows light up with the applied (smoothed) controls."""
     s = 34  # arrow cell size
 
@@ -205,13 +207,11 @@ def compose_frame(dream64: np.ndarray, hud: dict, flash: str = "") -> np.ndarray
     # Dream panel: nearest-neighbour upscale — honest, crunchy neural pixels.
     panel = cv2.resize(dream64, (DREAM, DREAM), interpolation=cv2.INTER_NEAREST)
     frame[PANEL_Y : PANEL_Y + DREAM, PANEL_X : PANEL_X + DREAM] = panel
-    cv2.rectangle(frame, (PANEL_X - 2, PANEL_Y - 2),
-                  (PANEL_X + DREAM + 1, PANEL_Y + DREAM + 1), ACCENT, 2)
+    cv2.rectangle(frame, (PANEL_X - 2, PANEL_Y - 2), (PANEL_X + DREAM + 1, PANEL_Y + DREAM + 1), ACCENT, 2)
     if flash:
         overlay = frame[PANEL_Y : PANEL_Y + DREAM, PANEL_X : PANEL_X + DREAM]
         overlay[:] = (overlay * 0.35).astype(np.uint8)
-        _text(frame, "YOU LEFT THE KNOWN WORLD", (PANEL_X + 60, PANEL_Y + DREAM // 2 - 20),
-              0.95, WARN, 2, FONT)
+        _text(frame, "YOU LEFT THE KNOWN WORLD", (PANEL_X + 60, PANEL_Y + DREAM // 2 - 20), 0.95, WARN, 2, FONT)
         _text(frame, flash, (PANEL_X + 60, PANEL_Y + DREAM // 2 + 24), 0.55, FG)
 
     _text(frame, "DREAMDRIVE", (SIDE_X, 92), 1.15, FG, 2, FONT)
@@ -232,14 +232,15 @@ def compose_frame(dream64: np.ndarray, hud: dict, flash: str = "") -> np.ndarray
     if len(hist) >= 2:
         lo, hi = min(hist), max(hist)
         span = max(hi - lo, 1e-6)
-        pts = [(int(x0 + i / (len(hist) - 1) * (w - 1)),
-                int(y0 + (1 - (v - lo) / span) * (h - 8)) + 4) for i, v in enumerate(hist)]
+        pts = [
+            (int(x0 + i / (len(hist) - 1) * (w - 1)), int(y0 + (1 - (v - lo) / span) * (h - 8)) + 4)
+            for i, v in enumerate(hist)
+        ]
         cv2.polylines(frame, [np.array(pts, np.int32)], False, ACCENT, 2, cv2.LINE_AA)
     _text(frame, f"imagined reward {hud['reward']:+5.2f}", (x0, y0 + h + 26), 0.55, ACCENT)
     _text(frame, "(predicted by the world model itself)", (x0, y0 + h + 50), 0.45, DIM)
 
-    _text(frame, "arrows drive | A autopilot | TAB level | R restart | ESC quit",
-          (SIDE_X, H - 46), 0.48, DIM)
+    _text(frame, "arrows drive | A autopilot | TAB level | R restart | ESC quit", (SIDE_X, H - 46), 0.48, DIM)
     return frame
 
 
@@ -257,8 +258,9 @@ def play(session: DreamSession, record: str | None) -> None:
     writer = None
     if record:
         Path(record).parent.mkdir(parents=True, exist_ok=True)
-        writer = imageio.get_writer(record, fps=FPS, codec="libx264",
-                                    quality=8, pixelformat="yuv420p", macro_block_size=None)
+        writer = imageio.get_writer(
+            record, fps=FPS, codec="libx264", quality=8, pixelformat="yuv420p", macro_block_size=None
+        )
 
     level, autopilot = 0, False
     steer = gas = brake = 0.0
@@ -310,17 +312,29 @@ def play(session: DreamSession, record: str | None) -> None:
         # Only armed once the player has actually been on the road this level
         # (positive imagined reward), so idling at spawn is safe.
         flash = ""
-        window = reward_hist[-int(3.0 * FPS):]
+        window = reward_hist[-int(3.0 * FPS) :]
         armed = any(r > 0.0 for r in reward_hist)
         if armed and len(window) >= int(3.0 * FPS) and max(window) < 0.0 and not autopilot:
             flash = "the model forgets roads it cannot see | dream restarting..."
-            frame = compose_frame(dream64, {
-                "params": session.n_params, "autopilot": autopilot, "level": level,
-                "n_levels": len(session.levels), "steps": session.steps,
-                "fps": clock.get_fps(), "ms": ms, "device": str(session.device),
-                "steer": steer, "gas": gas, "brake": brake,
-                "reward": reward, "reward_hist": reward_hist,
-            }, flash=flash)
+            frame = compose_frame(
+                dream64,
+                {
+                    "params": session.n_params,
+                    "autopilot": autopilot,
+                    "level": level,
+                    "n_levels": len(session.levels),
+                    "steps": session.steps,
+                    "fps": clock.get_fps(),
+                    "ms": ms,
+                    "device": str(session.device),
+                    "steer": steer,
+                    "gas": gas,
+                    "brake": brake,
+                    "reward": reward,
+                    "reward_hist": reward_hist,
+                },
+                flash=flash,
+            )
             for _ in range(int(1.2 * FPS)):
                 surf = pygame.surfarray.make_surface(frame.swapaxes(0, 1))
                 screen.blit(surf, (0, 0))
@@ -334,13 +348,24 @@ def play(session: DreamSession, record: str | None) -> None:
             steer = gas = brake = 0.0
             continue
 
-        frame = compose_frame(dream64, {
-            "params": session.n_params, "autopilot": autopilot, "level": level,
-            "n_levels": len(session.levels), "steps": session.steps,
-            "fps": clock.get_fps(), "ms": ms, "device": str(session.device),
-            "steer": steer, "gas": gas, "brake": brake,
-            "reward": reward, "reward_hist": reward_hist,
-        })
+        frame = compose_frame(
+            dream64,
+            {
+                "params": session.n_params,
+                "autopilot": autopilot,
+                "level": level,
+                "n_levels": len(session.levels),
+                "steps": session.steps,
+                "fps": clock.get_fps(),
+                "ms": ms,
+                "device": str(session.device),
+                "steer": steer,
+                "gas": gas,
+                "brake": brake,
+                "reward": reward,
+                "reward_hist": reward_hist,
+            },
+        )
         surf = pygame.surfarray.make_surface(frame.swapaxes(0, 1))
         screen.blit(surf, (0, 0))
         pygame.display.flip()
@@ -362,8 +387,7 @@ def selftest(session: DreamSession, out: str, seconds: int = 12) -> None:
     level. Reports how long the dream stays 'on road' (positive imagined reward
     within a rolling window) — the practical limit of a play session."""
     Path(out).parent.mkdir(parents=True, exist_ok=True)
-    writer = imageio.get_writer(out, fps=FPS, codec="libx264", quality=8,
-                                pixelformat="yuv420p", macro_block_size=None)
+    writer = imageio.get_writer(out, fps=FPS, codec="libx264", quality=8, pixelformat="yuv420p", macro_block_size=None)
     n = seconds * FPS
     times = []
     for level in range(len(session.levels)):
@@ -377,16 +401,29 @@ def selftest(session: DreamSession, out: str, seconds: int = 12) -> None:
             dream64, reward, _ = session.step(action)
             times.append((time.perf_counter() - t0) * 1e3)
             reward_hist.append(reward)
-            window = reward_hist[-int(2.0 * FPS):]
+            window = reward_hist[-int(2.0 * FPS) :]
             if lost_at == n and len(window) == int(2.0 * FPS) and max(window) < 0.0:
                 lost_at = i
-            writer.append_data(compose_frame(dream64, {
-                "params": session.n_params, "autopilot": True, "level": level,
-                "n_levels": len(session.levels), "steps": session.steps,
-                "fps": FPS, "ms": times[-1], "device": str(session.device),
-                "steer": steer, "gas": gas, "brake": brake,
-                "reward": reward, "reward_hist": reward_hist,
-            }))
+            writer.append_data(
+                compose_frame(
+                    dream64,
+                    {
+                        "params": session.n_params,
+                        "autopilot": True,
+                        "level": level,
+                        "n_levels": len(session.levels),
+                        "steps": session.steps,
+                        "fps": FPS,
+                        "ms": times[-1],
+                        "device": str(session.device),
+                        "steer": steer,
+                        "gas": gas,
+                        "brake": brake,
+                        "reward": reward,
+                        "reward_hist": reward_hist,
+                    },
+                )
+            )
         status = "coherent throughout" if lost_at == n else f"lost road at step {lost_at} (~{lost_at / FPS:.1f}s)"
         logger.info(f"Level {level}: {status}")
     writer.close()
@@ -404,17 +441,22 @@ def main() -> None:
     parser.add_argument("--seed-base", type=int, default=2000)
     parser.add_argument("--context", type=int, default=20)
     parser.add_argument("--record", type=str, default=None, help="Record the session to this MP4.")
-    parser.add_argument("--selftest", type=str, default=None,
-                        help="Run a headless scripted drive and save it to this MP4.")
+    parser.add_argument(
+        "--selftest", type=str, default=None, help="Run a headless scripted drive and save it to this MP4."
+    )
     args = parser.parse_args()
 
     device = (
-        torch.device("mps") if torch.backends.mps.is_available()
-        else torch.device("cuda") if torch.cuda.is_available()
+        torch.device("mps")
+        if torch.backends.mps.is_available()
+        else torch.device("cuda")
+        if torch.cuda.is_available()
         else torch.device("cpu")
     )
     session = DreamSession(
-        args.checkpoint, args.env, device,
+        args.checkpoint,
+        args.env,
+        device,
         level_seeds=[args.seed_base + i for i in range(args.levels)],
         context=args.context,
     )

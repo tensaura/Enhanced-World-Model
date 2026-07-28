@@ -148,9 +148,7 @@ def test_gae_no_dones():
     assert (buf.advantages > 0).all(), f"All advantages should be > 0, got {buf.advantages}"
     # Earlier steps should have larger advantages (more future reward to accumulate)
     advs = buf.advantages[:, 0].tolist()
-    assert (
-        advs[0] > advs[1] > advs[2] > advs[3]
-    ), f"Advantages should decrease over time, got {advs}"
+    assert advs[0] > advs[1] > advs[2] > advs[3], f"Advantages should decrease over time, got {advs}"
 
 
 def test_gae_with_terminal():

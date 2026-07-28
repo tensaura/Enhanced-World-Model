@@ -56,10 +56,7 @@ def _sparkline(history: list[float], width: int) -> np.ndarray:
         lo, hi = min(history), max(history)
         span = max(hi - lo, 1e-6)
         pts = [
-            (
-                int(i / (len(history) - 1) * (width - 1)),
-                int((1 - (v - lo) / span) * (SPARK_H - 12)) + 6,
-            )
+            (int(i / (len(history) - 1) * (width - 1)), int((1 - (v - lo) / span) * (SPARK_H - 12)) + 6)
             for i, v in enumerate(history)
         ]
         cv2.polylines(canvas, [np.array(pts, np.int32)], False, (80, 220, 120), 2, cv2.LINE_AA)
@@ -90,9 +87,7 @@ def _compose(
 
 
 def _card(
-    lines: list[tuple[str, float, tuple[int, int, int]]],
-    _highlight_idx: int | None = None,
-    hold: int = 40,
+    lines: list[tuple[str, float, tuple[int, int, int]]], _highlight_idx: int | None = None, hold: int = 40
 ) -> list[np.ndarray]:
     """A full-frame text card, repeated ``hold`` times so it lingers in the video."""
     canvas = np.full((H, W, 3), 18, dtype=np.uint8)
@@ -118,13 +113,7 @@ def run_test(
     max_steps: int = 1000,
 ) -> tuple[list[PanelData], float]:
     env_kwargs = {"domain_randomize": True} if domain_randomize else None
-    env = DreamerEnv(
-        env_name,
-        action_repeat=action_repeat,
-        seed=seed,
-        render_mode="rgb_array",
-        env_kwargs=env_kwargs,
-    )
+    env = DreamerEnv(env_name, action_repeat=action_repeat, seed=seed, render_mode="rgb_array", env_kwargs=env_kwargs)
     obs = env.reset()
     state = agent.wm.rssm.initial(1, device)
     prev_action = torch.zeros(1, env.action_dim, device=device)
@@ -133,9 +122,7 @@ def run_test(
     panels: list[np.ndarray] = []
     history: list[float] = []
     while not done and steps < max_steps:
-        embed = agent.wm.encode(
-            agent.wm.preprocess(torch.as_tensor(obs, device=device).unsqueeze(0))
-        )
+        embed = agent.wm.encode(agent.wm.preprocess(torch.as_tensor(obs, device=device).unsqueeze(0)))
         state, _ = agent.wm.rssm.obs_step(state, prev_action, embed, is_first)
         feat = agent.wm.rssm.get_feat(state)
         dist = agent.actor(feat)
@@ -187,13 +174,9 @@ def record_tests(
 
     returns: list[float] = []
     for k, sd in enumerate(seeds, 1):
-        panels, ep_reward = run_test(
-            agent, env_name, sd, device, action_repeat, stochastic, domain_randomize
-        )
+        panels, ep_reward = run_test(agent, env_name, sd, device, action_repeat, stochastic, domain_randomize)
         returns.append(ep_reward)
-        logger.info(
-            f"Test {k}/{tests} (seed {sd}): return {ep_reward:.1f} over {len(panels)} steps"
-        )
+        logger.info(f"Test {k}/{tests} (seed {sd}): return {ep_reward:.1f} over {len(panels)} steps")
         for real, recon, step, r, hist in panels:
             frames.append(_compose(real, recon, k, tests, sd, step, r, hist))
 

@@ -74,12 +74,7 @@ def create_world_model(
                 f"Controller model {args.controller} is not suitable for continuous action space."
             )
 
-    memory_args = {
-        "d_model": 128,
-        "latent_dim": vision_args["embed_dim"],
-        "action_dim": action_dim,
-        "nhead": 8,
-    }
+    memory_args = {"d_model": 128, "latent_dim": vision_args["embed_dim"], "action_dim": action_dim, "nhead": 8}
     controller_args = {"action_dim": action_dim}
 
     world_model = WorldModel(

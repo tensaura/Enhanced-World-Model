@@ -75,9 +75,7 @@ def make_toy_dataset(out_dir: Path, episodes: int = 20, length: int = 300, size:
             # car-relative position (bottom) toward upcoming curvature (top).
             for row in range(size):
                 depth = 1 - row / size  # 1 = horizon, 0 = car
-                center_here = road_center + depth * 0.4 * np.sin(
-                    curve_phase + curve_freq * (t + 40 * depth)
-                )
+                center_here = road_center + depth * 0.4 * np.sin(curve_phase + curve_freq * (t + 40 * depth))
                 cx = int((center_here - car_x) * size * 0.4 + size / 2)
                 half = int(size * (0.10 + 0.10 * (1 - depth)))
                 img[row, max(cx - half, 0) : min(cx + half, size)] = (110, 110, 110)
@@ -114,10 +112,7 @@ class VideoSequences:
         self.is_first = np.concatenate(is_first)
         self.action_dim = self.actions.shape[1]
         self.obs_shape = self.frames.shape[1:]
-        logger.info(
-            f"Loaded {len(files)} episodes, {len(self.frames)} frames total, "
-            f"action_dim={self.action_dim}"
-        )
+        logger.info(f"Loaded {len(files)} episodes, {len(self.frames)} frames total, action_dim={self.action_dim}")
 
     def _start_probs(self, seq_len: int) -> np.ndarray:
         """Window-start probabilities oversampling high-|steer| moments.
@@ -128,7 +123,7 @@ class VideoSequences:
         if getattr(self, "_probs_len", None) != seq_len:
             cs = np.concatenate([[0.0], np.cumsum(np.abs(self.actions[:, 0]))])
             n = len(self.frames) - seq_len
-            w = 0.15 + (cs[seq_len:seq_len + n] - cs[:n]) / seq_len
+            w = 0.15 + (cs[seq_len : seq_len + n] - cs[:n]) / seq_len
             self._probs = w / w.sum()
             self._probs_len = seq_len
         return self._probs
@@ -310,13 +305,20 @@ def dream_counterfactuals(
     for t in range(horizon):
         cols = [frames[context + t]] + [v["frames"][t] for v in variants.values()]
         row = []
-        for name, img in zip(names, cols):
+        for name, img in zip(names, cols, strict=False):
             p = cv2.resize(img, (panel, panel), interpolation=cv2.INTER_NEAREST)
             _label(p, name)
             row.append(p)
         video.append(np.concatenate(row, axis=1))
-    imageio.mimsave(out.with_suffix(".mp4"), video, fps=fps, codec="libx264",
-                    quality=8, pixelformat="yuv420p", macro_block_size=None)
+    imageio.mimsave(
+        out.with_suffix(".mp4"),
+        video,
+        fps=fps,
+        codec="libx264",
+        quality=8,
+        pixelformat="yuv420p",
+        macro_block_size=None,
+    )
     imageio.mimsave(out.with_suffix(".gif"), video[::2], duration=2 / fps)
     logger.info(f"Saved {out.with_suffix('.mp4')} and .gif ({horizon} dream steps)")
 
@@ -337,21 +339,28 @@ def main() -> None:
     parser.add_argument("--seq-len", type=int, default=32)
     parser.add_argument("--deter-dim", type=int, default=256)
     parser.add_argument("--cnn-depth", type=int, default=32)
-    parser.add_argument("--perceptual", type=float, default=0.0,
-                        help="Weight of the VGG perceptual sharpness loss (0 = off; try 20).")
+    parser.add_argument(
+        "--perceptual", type=float, default=0.0, help="Weight of the VGG perceptual sharpness loss (0 = off; try 20)."
+    )
     parser.add_argument("--context", type=int, default=15)
     parser.add_argument("--horizon", type=int, default=40)
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--device", type=str, default="",
-                        help="cpu | mps | cuda (default: auto). Use cpu while another run owns the GPU.")
+    parser.add_argument(
+        "--device",
+        type=str,
+        default="",
+        help="cpu | mps | cuda (default: auto). Use cpu while another run owns the GPU.",
+    )
     args = parser.parse_args()
 
     if args.device:
         device = torch.device(args.device)
     else:
         device = (
-            torch.device("mps") if torch.backends.mps.is_available()
-            else torch.device("cuda") if torch.cuda.is_available()
+            torch.device("mps")
+            if torch.backends.mps.is_available()
+            else torch.device("cuda")
+            if torch.cuda.is_available()
             else torch.device("cpu")
         )
 
@@ -359,16 +368,26 @@ def main() -> None:
         make_toy_dataset(Path(args.make_toy))
     if args.train:
         train_video_wm(
-            Path(args.data), Path(args.out), args.steps, device,
-            batch_size=args.batch_size, seq_len=args.seq_len,
-            deter_dim=args.deter_dim, cnn_depth=args.cnn_depth,
+            Path(args.data),
+            Path(args.out),
+            args.steps,
+            device,
+            batch_size=args.batch_size,
+            seq_len=args.seq_len,
+            deter_dim=args.deter_dim,
+            cnn_depth=args.cnn_depth,
             perceptual=args.perceptual,
         )
     if args.dream:
         ckpt = Path(args.checkpoint or (Path(args.out) / "video_wm_final.pt"))
         dream_counterfactuals(
-            ckpt, Path(args.data), Path("demo/video_dream"), device,
-            context=args.context, horizon=args.horizon, seed=args.seed,
+            ckpt,
+            Path(args.data),
+            Path("demo/video_dream"),
+            device,
+            context=args.context,
+            horizon=args.horizon,
+            seed=args.seed,
         )
     if not (args.make_toy or args.train or args.dream):
         parser.error("Pick at least one of --make-toy / --train / --dream")
