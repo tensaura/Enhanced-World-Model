@@ -136,11 +136,7 @@ def cancel_training() -> str:
         if process.poll() is None:
             try:
                 if sys.platform == "win32":
-                    subprocess.run(
-                        ["taskkill", "/F", "/T", "/PID", str(process.pid)],
-                        check=True,
-                        capture_output=True,
-                    )
+                    subprocess.run(["taskkill", "/F", "/T", "/PID", str(process.pid)], check=True, capture_output=True)
                 else:
                     os.killpg(os.getpgid(process.pid), signal.SIGKILL)
 
@@ -171,9 +167,7 @@ with gr.Blocks(theme=gr.themes.Default(primary_hue="blue", secondary_hue="blue")
     with gr.Row():
         with gr.Column(scale=2):
             gr.Markdown("## ⚙️ Hyperparameters")
-            env_name = gr.Dropdown(
-                choices=get_all_gym_envs(), label="Environment Name", value="CarRacing-v3"
-            )
+            env_name = gr.Dropdown(choices=get_all_gym_envs(), label="Environment Name", value="CarRacing-v3")
             random_seed = gr.Number(label="Random Seed", value=42, precision=0)
             max_epoch = gr.Number(label="Max Epochs", value=200, precision=0)
             patience = gr.Number(label="Patience", value=5, precision=0)

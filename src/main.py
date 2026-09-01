@@ -1,5 +1,6 @@
 import argparse
 import logging
+import os
 from datetime import datetime
 from pathlib import Path
 
@@ -10,9 +11,9 @@ import controller
 import memory
 import vision
 from inference import evaluate
-from pretrain import pretrain
 from train import train
 from utils.cli import CLI
+from utils.gym_tools import auto_batch_size
 from utils.model import create_world_model
 from utils.registry import discover_modules
 
@@ -20,7 +21,9 @@ VISION_REGISTRY: dict = discover_modules(vision)
 MEMORY_REGISTRY: dict = discover_modules(memory)
 CONTROLLER_REGISTRY: dict = discover_modules(controller)
 
-torch.autograd.set_detect_anomaly(True)
+# Anomaly detection is a debugging aid that makes every backward pass 2-3x slower.
+# Enable it only when EWM_DETECT_ANOMALY=1 is set, not by default.
+torch.autograd.set_detect_anomaly(os.environ.get("EWM_DETECT_ANOMALY") == "1")
 
 device: torch.device = (
     torch.device("mps")
@@ -46,15 +49,9 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     interface_group = parser.add_mutually_exclusive_group()
     interface_group.add_argument(
-        "--ui",
-        action="store_true",
-        help="Launch the Gradio interface instead of training directly.",
+        "--ui", action="store_true", help="Launch the Gradio interface instead of training directly."
     )
-    interface_group.add_argument(
-        "--cli",
-        action="store_true",
-        help="Runs the command line interface.",
-    )
+    interface_group.add_argument("--cli", action="store_true", help="Runs the command line interface.")
     parser.add_argument(
         "--env",
         type=str,
@@ -66,7 +63,12 @@ def main() -> None:
     parser.add_argument("--controller", type=str, default="DeepDiscreteController")
 
     parser.add_argument("--epochs", type=int, default=1000)
-    parser.add_argument("--patience", type=int, default=5)  # Unused yet, not in CLI.
+    parser.add_argument(
+        "--patience",
+        type=int,
+        default=0,
+        help="Epochs without mean-reward improvement before early stopping. 0 = disabled.",
+    )
     parser.add_argument("--batch-size", type=str, default="auto")
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--dropout", type=float, default=0.2)
@@ -75,9 +77,7 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--save-path", type=str, default="./saved_models/")
     parser.add_argument("--load-path", type=str, default="")
-    parser.add_argument(
-        "--patch-load-path", type=str, default="", help="Path to model to load on top."
-    )
+    parser.add_argument("--patch-load-path", type=str, default="", help="Path to model to load on top.")
     parser.add_argument(
         "--patch",
         type=str,
@@ -85,78 +85,61 @@ def main() -> None:
         choices=["v", "m", "c", "vm", "vc", "mc", "vmc"],
         help="The sub models to patch.",
     )
-    parser.add_argument(
-        "--save-freq", type=int, default=10, help="Frequency of saving model checkpoints."
-    )
-    parser.add_argument(
-        "--log-freq", type=int, default=10, help="Frequency of logging training progress."
-    )
+    parser.add_argument("--save-freq", type=int, default=10, help="Frequency of saving model checkpoints.")
+    parser.add_argument("--log-freq", type=int, default=10, help="Frequency of logging training progress.")
     parser.add_argument("--tensorboard", action="store_true", help="Enable tensorboard logging.")
 
-    # Pretraining args
-    parser.add_argument("--pretrain-vision", action="store_true")
-    parser.add_argument("--pretrain-memory", action="store_true")
-    parser.add_argument("--pretrain-mode", type=str, default="random", choices=["manual", "random"])
+    # Other args
     parser.add_argument(
-        "--manual-mode-delay",
-        type=float,
-        default=0.05,
-        help="Delay between each step during manual training.",
+        "--manual-mode-delay", type=float, default=0.05, help="Delay between each step during manual training."
     )
 
     # PPO arguments
     parser.add_argument("--rollout-steps", type=int, default=128, help="Number of rollout steps.")
-    parser.add_argument(
-        "--ppo-epochs", type=int, default=4, help="Number of epochs for PPO training."
-    )
-    parser.add_argument(
-        "--ppo-lr", type=float, default=3e-4, help="Learning rate for PPO training."
-    )
-    parser.add_argument(
-        "--ppo-batch-size", type=int, default=64, help="Batch size for PPO training."
-    )
-    parser.add_argument(
-        "--ppo-clip-range", type=float, default=0.2, help="Clipping parameter for PPO training."
-    )
-    parser.add_argument(
-        "--ppo-range-vf", type=float, default=None, help="Value function for PPO training."
-    )
-    parser.add_argument(
-        "--gamma", type=float, default=0.99, help="Gamma parameter for GAE in PPO training."
-    )
-    parser.add_argument(
-        "--gae-lambda", type=float, default=0.95, help="Lambda parameter for GAE in PPO training."
-    )
-    parser.add_argument(
-        "--value-coef", type=float, default=0.5, help="Value loss coefficient in PPO training."
-    )
-    parser.add_argument(
-        "--entropy-coef", type=float, default=0.01, help="Entropy coefficient in PPO training."
-    )
-    parser.add_argument(
-        "--max-grad-norm", type=float, default=0.5, help="Maximum gradient norm in PPO training."
-    )
-    parser.add_argument(
-        "--no-train-world-model", action="store_true", help="Train the world model."
-    )
-    parser.add_argument(
-        "--world-model-epochs",
-        type=int,
-        default=1,
-        help="Number of epochs for world model training.",
-    )
+    parser.add_argument("--ppo-epochs", type=int, default=4, help="Number of epochs for PPO training.")
+    parser.add_argument("--ppo-lr", type=float, default=3e-4, help="Learning rate for PPO training.")
+    parser.add_argument("--ppo-batch-size", type=int, default=64, help="Batch size for PPO training.")
+    parser.add_argument("--ppo-clip-range", type=float, default=0.2, help="Clipping parameter for PPO training.")
+    parser.add_argument("--ppo-range-vf", type=float, default=None, help="Value function for PPO training.")
+    parser.add_argument("--gamma", type=float, default=0.99, help="Gamma parameter for GAE in PPO training.")
+    parser.add_argument("--gae-lambda", type=float, default=0.95, help="Lambda parameter for GAE in PPO training.")
+    parser.add_argument("--value-coef", type=float, default=0.5, help="Value loss coefficient in PPO training.")
+    parser.add_argument("--entropy-coef", type=float, default=0.01, help="Entropy coefficient in PPO training.")
+    parser.add_argument("--max-grad-norm", type=float, default=0.5, help="Maximum gradient norm in PPO training.")
+    parser.add_argument("--no-train-world-model", action="store_true", help="Train the world model.")
+    parser.add_argument("--world-model-epochs", type=int, default=1, help="Number of epochs for world model training.")
 
     # Inference arguments
     parser.add_argument("--episodes", type=int, default=5, help="Number of episodes to run.")
     parser.add_argument("--infer", action="store_true", help="Enable inference mode.")
 
+    # Algorithm selection + DreamerV3-lite arguments
+    parser.add_argument(
+        "--algo",
+        type=str,
+        default="ppo",
+        choices=["ppo", "dreamer"],
+        help="Training algorithm: 'ppo' (modular world model) or 'dreamer' (latent imagination).",
+    )
+    parser.add_argument("--total-steps", type=int, default=100_000, help="[dreamer] Total environment steps.")
+    parser.add_argument("--prefill", type=int, default=2000, help="[dreamer] Random steps before learning starts.")
+    parser.add_argument("--train-every", type=int, default=5, help="[dreamer] Env steps between train steps.")
+    parser.add_argument("--seq-len", type=int, default=50, help="[dreamer] Replay sequence length.")
+    parser.add_argument("--dreamer-batch", type=int, default=16, help="[dreamer] World-model batch size.")
+    parser.add_argument("--action-repeat", type=int, default=2, help="[dreamer] Frame-skip / action repeat.")
+    parser.add_argument("--horizon", type=int, default=15, help="[dreamer] Imagination horizon.")
+    parser.add_argument("--deter-dim", type=int, default=256, help="[dreamer] RSSM GRU state size.")
+    parser.add_argument("--cnn-depth", type=int, default=32, help="[dreamer] Base conv channels.")
+    parser.add_argument("--entropy-scale", type=float, default=1e-3, help="[dreamer] Actor entropy bonus scale.")
+
     args = parser.parse_args()
     if args.cli:
         CLI(args, VISION_REGISTRY, MEMORY_REGISTRY, CONTROLLER_REGISTRY)
-    env_batch_size = int(args.batch_size) if args.batch_size.isdigit() else "auto"
-    if env_batch_size == "auto":
-        # TODO: Automatically determines the maximum size of the batch.
-        env_batch_size = 2
+    if args.batch_size.isdigit():
+        env_batch_size = int(args.batch_size)
+    else:
+        env_batch_size = auto_batch_size(args.env)
+        logger.info(f"Auto batch size selected: {env_batch_size} parallel environments.")
 
     logger.info(f"Running with {env_batch_size} parallel environments.")
 
@@ -171,18 +154,32 @@ def main() -> None:
     logger.info(str(args))
     logger.info(f"Using device: {device}")
 
-    try:
-        if args.pretrain_vision and args.pretrain_mode == "manual":
-            args.render_mode = "rgb_array"  # "human"
-        real_render_mode = args.render_mode
-        if (
-            args.render_mode == "human"
-        ):  # Temporary `if` as long as the rendering of the first env is done through cv2.
-            real_render_mode = "rgb_array"
+    if args.algo == "dreamer":
+        from dreamer.train import train_dreamer
 
-        envs = gym.make_vec(
-            args.env, num_envs=env_batch_size, render_mode=real_render_mode
-        )  # args.render_mode)
+        logger.info("Running DreamerV3-lite (latent imagination).")
+        train_dreamer(
+            env_name=args.env,
+            device=device,
+            total_steps=args.total_steps,
+            prefill=args.prefill,
+            train_every=args.train_every,
+            seq_len=args.seq_len,
+            batch_size=args.dreamer_batch,
+            action_repeat=args.action_repeat,
+            horizon=args.horizon,
+            deter_dim=args.deter_dim,
+            cnn_depth=args.cnn_depth,
+            entropy_scale=args.entropy_scale,
+            seed=args.seed,
+            save_path=Path(args.save_path),
+            load_path=args.load_path,
+            use_tensorboard=args.tensorboard,
+        )
+        return
+
+    try:
+        envs = gym.make_vec(args.env, num_envs=env_batch_size, render_mode=args.render_mode)
 
         log_messages: dict[str, list[str]] = {"info": [], "warning": [], "error": []}
         try:
@@ -207,9 +204,7 @@ def main() -> None:
 
         if args.load_path:
             print(f"Loading model from {args.load_path}")
-            world_model.load(
-                args.load_path, obs_space=obs_space, action_space=action_space, device=device
-            )
+            world_model.load(args.load_path, obs_space=obs_space, action_space=action_space, device=device)
 
         if args.patch_load_path:
             patches = []
@@ -222,49 +217,14 @@ def main() -> None:
 
             logger.info(f"Patching {', '.join(patches)} of model with {args.patch_load_path}")
             world_model.patch_load(
-                args.patch_load_path,
-                args.patch,
-                obs_space=obs_space,
-                action_space=action_space,
-                device=device,
+                args.patch_load_path, args.patch, obs_space=obs_space, action_space=action_space, device=device
             )
 
         if args.infer:
             if not args.load_path or args.patch_load_path:
                 logger.warning("World model is not initialized. Infering with random weights.")
             world_model.eval()
-            evaluate(
-                world_model, args.env, num_episodes=args.episodes, render_mode=args.render_mode
-            )
-        elif args.pretrain_vision or args.pretrain_memory:
-            if not args.pretrain_vision:
-                for param in world_model.vision.parameters():
-                    param.requires_grad = False
-
-            if not args.pretrain_memory:
-                for param in world_model.memory.parameters():
-                    param.requires_grad = False
-
-            for param in world_model.controller.parameters():
-                param.requires_grad = False
-
-            save_prefix = (
-                "" + ("V" if args.pretrain_vision else "") + ("M" if args.pretrain_memory else "")
-            )
-            pretrain(
-                world_model,
-                envs,
-                max_iter=args.epochs,
-                device=device,
-                learning_rate=args.lr,
-                mode=args.pretrain_mode,
-                delay=args.manual_mode_delay,
-                save_path=args.save_path,
-                save_prefix=save_prefix,
-                pretrain_vision=args.pretrain_vision,
-                pretrain_memory=args.pretrain_memory,
-                render_mode=args.render_mode,
-            )
+            evaluate(world_model, args.env, num_episodes=args.episodes, render_mode=args.render_mode)
         else:
             if args.load_path:
                 for param in world_model.parameters():
@@ -289,6 +249,7 @@ def main() -> None:
                 max_grad_norm=args.max_grad_norm,
                 train_world_model=not args.no_train_world_model,
                 world_model_epochs=args.world_model_epochs,
+                patience=args.patience,
                 use_tensorboard=args.tensorboard,
                 save_path=Path(args.save_path),
                 save_freq=args.save_freq,
@@ -296,14 +257,8 @@ def main() -> None:
                 render_mode=args.render_mode,
             )
 
-            save_name = Path(
-                f"{args.save_path}{args.env}_{datetime.now().isoformat(timespec='minutes')}.pt"
-            )
-            world_model.save(
-                save_name,
-                obs_space=obs_space,
-                action_space=action_space,
-            )
+            save_name = Path(f"{args.save_path}{args.env}_{datetime.now().isoformat(timespec='minutes')}.pt")
+            world_model.save(save_name, obs_space=obs_space, action_space=action_space)
 
             logger.info(f"Model saved to {save_name}")
 

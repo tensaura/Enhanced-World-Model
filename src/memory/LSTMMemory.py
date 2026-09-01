@@ -17,15 +17,10 @@ class LSTMMemory(MemoryModel):
     - Designed for sequential processing
     """
 
-    tags: list[str] = []
+    tags: frozenset = frozenset()
 
     def __init__(
-        self,
-        latent_dim: int = 4,
-        action_dim: int = 2,
-        d_model: int = 128,
-        num_layers: int = 1,
-        **_kwargs: Any,
+        self, latent_dim: int = 4, action_dim: int = 2, d_model: int = 128, num_layers: int = 1, **_kwargs: Any
     ) -> None:
         super().__init__()
 
@@ -40,18 +35,11 @@ class LSTMMemory(MemoryModel):
         self.input_norm = nn.LayerNorm(d_model)
 
         # LSTM for temporal modeling
-        self.lstm = nn.LSTM(
-            input_size=d_model,
-            hidden_size=d_model,
-            num_layers=num_layers,
-            batch_first=True,
-        )
+        self.lstm = nn.LSTM(input_size=d_model, hidden_size=d_model, num_layers=num_layers, batch_first=True)
 
         # Output projection for next state prediction
         self.output_proj = nn.Sequential(
-            nn.Linear(d_model + self.input_dim, d_model),
-            nn.ReLU(),
-            nn.Linear(d_model, latent_dim),
+            nn.Linear(d_model + self.input_dim, d_model), nn.ReLU(), nn.Linear(d_model, latent_dim)
         )
 
         # Hidden state storage
@@ -136,9 +124,7 @@ class LSTMMemory(MemoryModel):
         z_next = self.output_proj(combined)  # (B, latent_dim)
         return z_next
 
-    def forward(
-        self, z_t: torch.Tensor, a_prev: torch.Tensor, a_t: torch.Tensor
-    ) -> tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, z_t: torch.Tensor, a_prev: torch.Tensor, a_t: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Full forward pass: update memory and predict next state.
 

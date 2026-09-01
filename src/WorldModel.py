@@ -24,12 +24,7 @@ def describe_action_space(space: Any) -> dict:
         return {"type": "Box", "shape": space.shape, "low": space.low, "high": space.high}
 
     elif isinstance(space, gym.spaces.MultiDiscrete):
-        return {
-            "type": "MultiDiscrete",
-            "nvec": space.nvec,
-            "low": np.zeros_like(space.nvec),
-            "high": space.nvec - 1,
-        }
+        return {"type": "MultiDiscrete", "nvec": space.nvec, "low": np.zeros_like(space.nvec), "high": space.nvec - 1}
 
     elif isinstance(space, gym.spaces.MultiBinary):
         return {
@@ -43,27 +38,24 @@ def describe_action_space(space: Any) -> dict:
         return {"type": "Tuple", "spaces": [describe_action_space(s) for s in space.spaces]}
 
     elif isinstance(space, gym.spaces.Dict):
-        return {
-            "type": "Dict",
-            "spaces": {k: describe_action_space(v) for k, v in space.spaces.items()},
-        }
+        return {"type": "Dict", "spaces": {k: describe_action_space(v) for k, v in space.spaces.items()}}
 
     else:
         return {"type": "Unknown", "details": str(space)}
 
 
-def squash_to_action_space(raw_action: torch.Tensor, action_space: Any) -> torch.Tensor:
+def squash_to_action_space(tanh_action: torch.Tensor, action_space: Any) -> torch.Tensor:
     """
-    Mappe une action non bornée dans les bornes de action_space (gym.spaces.Box).
+    Linearly rescale a tanh-squashed action (already in [-1, 1]) to [low, high].
+
+    The controller already applies torch.tanh() and returns values in [-1, 1].
+    This function performs the final affine remap — no extra tanh needed.
     """
     decrypted_action_space = describe_action_space(action_space)
-    low = torch.as_tensor(
-        decrypted_action_space["low"], dtype=torch.float32, device=raw_action.device
-    )
-    high = torch.as_tensor(
-        decrypted_action_space["high"], dtype=torch.float32, device=raw_action.device
-    )
-    scaled = 0.5 * ((torch.tanh(raw_action) + 1) * (high - low)) + low
+    low = torch.as_tensor(decrypted_action_space["low"], dtype=torch.float32, device=tanh_action.device)
+    high = torch.as_tensor(decrypted_action_space["high"], dtype=torch.float32, device=tanh_action.device)
+    # Linear rescale: [-1, 1] → [low, high]
+    scaled = 0.5 * ((tanh_action + 1) * (high - low)) + low
     return scaled
 
 
@@ -73,11 +65,11 @@ class WorldModel(Model):
         vision_model: vision.VisionModel,
         memory_model: memory.MemoryModel,
         controller_model: controller.ControllerModel,
-        input_shape: tuple[int, ...],
-        vision_args: dict,
-        memory_args: dict,
-        controller_args: dict,
-    ) -> None:
+        input_shape,
+        vision_args,
+        memory_args,
+        controller_args,
+    ):
         super().__init__()
         self.iter_num = 0  # The number of training iterations tied to this model.
         self.nb_experiments = 0
@@ -86,25 +78,16 @@ class WorldModel(Model):
         # The input to the memory model is the output of the vision model
         self.memory = memory_model(**memory_args)
 
-        # The controller takes the output of both the vision and memory models
-        # Note: self.memory.transformer.d_model might be a more robust way to get h_dim
-        self.memory_d_model = memory_args.get("d_model", 128)  # Default to 128 if not specified
+        # Read d_model from the instantiated memory (RSSM sets d_model = rnn_dim + stoch_dim,
+        # which may differ from the raw memory_args value).
+        self.memory_d_model = getattr(self.memory, "d_model", memory_args.get("d_model", 128))
         self.action_dim = controller_args["action_dim"]
         controller_h_dim = self.memory_d_model
-        self.controller = controller_model(
-            z_dim=self.vision.embed_dim, h_dim=controller_h_dim, **controller_args
-        )
+        self.controller = controller_model(z_dim=self.vision.embed_dim, h_dim=controller_h_dim, **controller_args)
 
         self.a_prev = None
 
-    def forward(
-        self,
-        input: torch.Tensor,
-        action_space: Any,
-        is_image_based: bool,
-        return_losses: bool = False,
-        last_reward: torch.Tensor | None = None,
-    ) -> torch.Tensor | dict:
+    def forward(self, input, action_space, is_image_based, return_losses=False, last_reward=None):
         """
         Args:
             input: observation actuelle
@@ -114,10 +97,10 @@ class WorldModel(Model):
             z_next_actual: (B, latent_dim, 1, 1) - vrai prochain z pour training
         """
         # === VISION MODEL ===
-        recon, vq_loss = self.vision(input)
-        z_e = self.vision.encode(input, is_image_based=is_image_based)  # (B, latent_dim, H, W)
+        # Single forward pass — z_e is reused for memory/controller (no double-encoding).
+        recon, z_e, vq_loss = self.vision(input)  # z_e: (B, embed_dim, H', W') or (B, embed_dim)
 
-        # Flatten spatial dimensions pour obtenir le vecteur latent
+        # Flatten spatial dimensions to get the latent vector
         if is_image_based:
             z_t = z_e.mean(dim=(2, 3))  # (B, latent_dim)
         else:
@@ -132,9 +115,7 @@ class WorldModel(Model):
             sample_shape = np.shape(action_space.sample())
             if sample_shape == ():
                 sample_shape = (self.action_dim,)
-            self.a_prev = torch.zeros(
-                (input.shape[0], *sample_shape), device=input.device, dtype=torch.float32
-            )
+            self.a_prev = torch.zeros((input.shape[0], *sample_shape), device=input.device, dtype=torch.float32)
 
         h_t = self.memory.update_memory(z_t, self.a_prev)
 
@@ -147,19 +128,23 @@ class WorldModel(Model):
             action = action.to(device)
             log_probs = log_probs.to(device)
 
-            a_prev_onehot = (
-                torch.nn.functional.one_hot(action.long(), num_classes=n).float().to(device)
-            )
+            a_prev_onehot = torch.nn.functional.one_hot(action.long(), num_classes=n).float().to(device)
             self.a_prev = a_prev_onehot.detach()
 
             z_next_pred = self.memory.predict_next(z_t, self.a_prev, h_t)
+            if not return_losses:
+                return action
         else:
-            action = squash_to_action_space(action, action_space)
-            self.a_prev = action.detach()
-            z_next_pred = self.memory.predict_next(z_t, action, h_t)
+            # action is already tanh-squashed to [-1, 1] by the controller.
+            # Keep it in tanh-space for PPO buffer / evaluate_actions consistency.
+            action_tanh = action  # [-1, 1] — stored in buffer, used for log-prob computation
+            action_env = squash_to_action_space(action_tanh, action_space)  # env-ready
+            self.a_prev = action_tanh.detach()  # tanh-space: consistent with memory training
+            z_next_pred = self.memory.predict_next(z_t, action_tanh, h_t)
+            action = action_tanh  # output dict uses tanh-space; action_env exposed separately
 
-        if not return_losses:
-            return action
+            if not return_losses:
+                return action_env
 
         # === LOSSES ===
         # Vision loss depends on model type
@@ -169,15 +154,21 @@ class WorldModel(Model):
             recon_loss = torch.zeros(input.shape[0], device=input.device)
             total_loss = vq_loss.mean()
         else:
-            # VQ-VAE: compute reconstruction loss between recon and input
+            # VQ-VAE / VAE: compute reconstruction loss between recon and input
             recon_loss = torch.nn.functional.mse_loss(recon, input, reduction="none").mean(
                 dim=tuple(range(1, recon.dim()))
             )
             total_loss = recon_loss.mean() + vq_loss.mean()
 
+        # Memory extra loss (e.g. KL divergence for RSSM)
+        extra_memory_loss = self.memory.get_extra_loss()
+        if extra_memory_loss is not None:
+            total_loss = total_loss + extra_memory_loss
+
         outputs = {
-            "memory_prediction": z_next_pred,  # (B, latent_dim) - prédiction de z_{t+1}
-            "memory_hidden": h_t,  # (B, d_model) - état caché du transformer
+            "memory_prediction": z_next_pred,  # (B, latent_dim) - predicted z_{t+1}
+            "memory_hidden": h_t,  # (B, d_model) - memory hidden state
+            "z_t": z_t,  # (B, latent_dim) - current vision latent (reused from forward pass)
             "action": action,
             "recon_loss": recon_loss,
             "vq_loss": vq_loss,
@@ -188,7 +179,7 @@ class WorldModel(Model):
 
         return outputs
 
-    def reset_env_memory(self, env_idx: int | torch.Tensor) -> None:
+    def reset_env_memory(self, env_idx):
         self.memory.reset_env_memory(env_idx)
         if self.a_prev is not None:
             self.a_prev[env_idx] = 0
@@ -205,7 +196,7 @@ class WorldModel(Model):
 
         return hyperparams_dict
 
-    def save(self, path: Path, obs_space: Any, action_space: Any) -> None:
+    def save(self, path, obs_space, action_space):
         saving_dict = {
             "iter_num": self.iter_num,
             "nb_experiments": self.nb_experiments,
@@ -224,17 +215,10 @@ class WorldModel(Model):
 
         torch.save(saving_dict, path)
 
-    def load(self, path: Path, obs_space: Any, action_space: Any, device: torch.device) -> None:
+    def load(self, path, obs_space, action_space, device):
         self.patch_load(path, "vmc", obs_space, action_space, device)
 
-    def patch_load(
-        self,
-        patch_path: Path,
-        patches: str,
-        obs_space: Any,
-        action_space: Any,
-        device: torch.device,
-    ) -> None:
+    def patch_load(self, patch_path, patches, obs_space, action_space, device) -> None:
         # TODO: Check input/output shape consistencies between components before loading the weights ?
         saved_dict = torch.load(patch_path, weights_only=False, map_location=device)
 
@@ -243,9 +227,7 @@ class WorldModel(Model):
 
         if "v" in patches:
             if saved_dict["obs_space"] != obs_space:
-                print(
-                    "\nObservation space of the vision to load does not match those of the current environment.\n"
-                )
+                print("\nObservation space of the vision to load does not match those of the current environment.\n")
             self.vision = VISION_REGISTRY[saved_dict["vision_model"]](**saved_dict["vision_args"])
             self.vision.load(saved_dict["vision_dict"])
 
@@ -255,16 +237,12 @@ class WorldModel(Model):
 
         if "c" in patches:
             if saved_dict["action_space"] != action_space:
-                print(
-                    "\nAction space of the controller to load does not match those of the current environment.\n"
-                )
-            self.controller = CONTROLLER_REGISTRY[saved_dict["controller_model"]](
-                **saved_dict["controller_args"]
-            )
+                print("\nAction space of the controller to load does not match those of the current environment.\n")
+            self.controller = CONTROLLER_REGISTRY[saved_dict["controller_model"]](**saved_dict["controller_args"])
             self.controller.load(saved_dict["controller_dict"])
 
 
-def render_first_env(envs: Any, title: str = "") -> None:
+def render_first_env(envs, title=""):
     import cv2
 
     frames = envs.render()

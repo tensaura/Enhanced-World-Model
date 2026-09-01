@@ -1,11 +1,10 @@
 from argparse import Namespace
-
 import gymnasium as gym
-from gymnasium.spaces import Space
 import torch
+from gymnasium.spaces import Space
 
-from WorldModel import WorldModel
 from utils.gym_tools import get_env_info
+from WorldModel import WorldModel
 
 
 def create_world_model(
@@ -21,9 +20,6 @@ def create_world_model(
         log_messages: dict[str, list[str]] = {"info": [], "warning": [], "error": []}
     else:
         log_messages = messages
-
-    if args.pretrain_vision and args.pretrain_mode == "manual":
-        args.render_mode = "rgb_array"  # "human"
 
     obs_space, action_space, is_image_based, is_discrete = get_env_info(args.env)
 
@@ -78,12 +74,7 @@ def create_world_model(
                 f"Controller model {args.controller} is not suitable for continuous action space."
             )
 
-    memory_args = {
-        "d_model": 128,
-        "latent_dim": vision_args["embed_dim"],
-        "action_dim": action_dim,
-        "nhead": 8,
-    }
+    memory_args = {"d_model": 128, "latent_dim": vision_args["embed_dim"], "action_dim": action_dim, "nhead": 8}
     controller_args = {"action_dim": action_dim}
 
     world_model = WorldModel(

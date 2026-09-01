@@ -1,5 +1,6 @@
 from abc import abstractmethod
 from typing import Any
+
 import torch
 
 from Model import Model
@@ -73,3 +74,27 @@ class MemoryModel(Model):
     def reset(self, batch_idx: int | None = None) -> None:
         """Reset memory buffer (for specific env or all)."""
         pass
+
+    def get_extra_loss(self) -> torch.Tensor | None:
+        """
+        Return any auxiliary training loss produced by the last update_memory call.
+
+        Override in subclasses that have their own latent-space training signal
+        (e.g. RSSM returns the KL divergence between posterior and prior).
+        Returns None by default (no extra loss).
+        """
+        return None
+
+    def compute_cpc_loss(self, h_t: torch.Tensor, z_next: torch.Tensor) -> torch.Tensor | None:
+        """
+        Compute a Contrastive Predictive Coding (InfoNCE) auxiliary loss.
+
+        Override in subclasses that include a CPC head
+        (e.g. TemporalTransformer).
+        Returns None by default (no CPC loss).
+
+        Args:
+            h_t:    Hidden state from update_memory (B, d_model).
+            z_next: Actual next observation latent from vision encoder (B, latent_dim).
+        """
+        return None

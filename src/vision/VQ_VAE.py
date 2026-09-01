@@ -89,9 +89,7 @@ class VectorQuantizerEMA(torch.nn.Module):
     Much more stable than the original VQ-VAE.
     """
 
-    def __init__(
-        self, num_embeddings: int, embed_dim: int, decay: float = 0.99, eps: float = 1e-5
-    ) -> None:
+    def __init__(self, num_embeddings: int, embed_dim: int, decay: float = 0.99, eps: float = 1e-5) -> None:
         super().__init__()
 
         self.num_embeddings = num_embeddings
@@ -117,11 +115,7 @@ class VectorQuantizerEMA(torch.nn.Module):
         z_e_perm = z_e.permute(0, 2, 3, 1).contiguous()
         flat = z_e_perm.view(-1, self.embed_dim)
 
-        distances = (
-            flat.pow(2).sum(1, keepdim=True)
-            - 2 * flat @ self.embedding.T
-            + self.embedding.pow(2).sum(1)
-        )
+        distances = flat.pow(2).sum(1, keepdim=True) - 2 * flat @ self.embedding.T + self.embedding.pow(2).sum(1)
 
         indices = torch.argmin(distances, dim=1)
 
@@ -143,9 +137,7 @@ class VectorQuantizerEMA(torch.nn.Module):
                 self.embed_avg.mul_(self.decay).add_(embed_sum.t(), alpha=1 - self.decay)
 
                 n = self.cluster_size.sum()
-                cluster_size = (
-                    (self.cluster_size + self.eps) / (n + self.num_embeddings * self.eps) * n
-                )
+                cluster_size = (self.cluster_size + self.eps) / (n + self.num_embeddings * self.eps) * n
 
                 self.embedding.data.copy_(self.embed_avg / cluster_size.unsqueeze(1))
 
@@ -186,13 +178,9 @@ class VQ_VAE(VisionModel):
         # assert len(input_shape) == 3, "This version supports 2D inputs only (e.g. images)"
 
         self.encoder = torch.nn.Sequential(
-            torch.nn.Conv2d(
-                nb_channels, hidden_dim, kernel_size=kernel_size, stride=stride, padding=1
-            ),
+            torch.nn.Conv2d(nb_channels, hidden_dim, kernel_size=kernel_size, stride=stride, padding=1),
             torch.nn.ReLU(),
-            torch.nn.Conv2d(
-                hidden_dim, hidden_dim, kernel_size=kernel_size, stride=stride, padding=1
-            ),  # → 32x32
+            torch.nn.Conv2d(hidden_dim, hidden_dim, kernel_size=kernel_size, stride=stride, padding=1),  # → 32x32
             ResidualBlock(hidden_dim),
             ResidualBlock(hidden_dim),
             torch.nn.Conv2d(hidden_dim, embed_dim, kernel_size=1),
@@ -213,11 +201,11 @@ class VQ_VAE(VisionModel):
             ),  # → 128x128
         )
 
-    def forward(self, input: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, input: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         z_e = self.encoder(input)
         z_q, vq_loss, _ = self.vq(z_e)
         x_recon = self.decoder(z_q)
-        return x_recon, vq_loss
+        return x_recon, z_q, vq_loss
 
     def encode(self, input: torch.Tensor, is_image_based: bool) -> torch.Tensor:
         z_e = self.encoder(input)

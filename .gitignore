@@ -213,3 +213,10 @@ __marimo__/
 *.pt
 
 cli.json
+
+# Process-tracking files from background training runs
+*.pid
+
+# Bulky demo media (curated copies live in assets/ for the README)
+demo/
+data/

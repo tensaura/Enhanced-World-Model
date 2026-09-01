@@ -19,9 +19,10 @@ class Identity(VisionModel):
         self.input_shape = input_shape
         self.embed_dim = input_shape[0]
 
-    def forward(self, input: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        # Return the input as the "reconstruction" and a zero loss
-        return input, torch.tensor(0.0, device=input.device)
+    def forward(self, input: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        # Pass-through: reconstruction = input, z = input, loss = 0
+        zero = torch.tensor(0.0, device=input.device)
+        return input, input, zero
 
     def encode(self, input: torch.Tensor, is_image_based: bool) -> torch.Tensor:
         if is_image_based:
@@ -30,9 +31,7 @@ class Identity(VisionModel):
         return input
 
     def export_hyperparams(self) -> dict[str, tuple[int]]:
-        return {
-            "input_shape": self.input_shape,
-        }
+        return {"input_shape": self.input_shape}
 
     def save_state(self) -> dict[str, torch.Tensor]:
         return cast(dict[str, Any], self.state_dict())

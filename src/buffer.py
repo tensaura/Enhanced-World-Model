@@ -56,16 +56,12 @@ class RolloutBuffer:
         self.is_discrete = is_discrete
 
         # Pre-allocate tensors
-        self.observations = torch.zeros(
-            (buffer_size, num_envs, *obs_shape), dtype=torch.float32, device=device
-        )
+        self.observations = torch.zeros((buffer_size, num_envs, *obs_shape), dtype=torch.float32, device=device)
         # Actions: discrete -> (buffer, envs), continuous -> (buffer, envs, action_dim)
         if is_discrete:
             self.actions = torch.zeros((buffer_size, num_envs), dtype=torch.long, device=device)
         else:
-            self.actions = torch.zeros(
-                (buffer_size, num_envs, action_dim), dtype=torch.float32, device=device
-            )
+            self.actions = torch.zeros((buffer_size, num_envs, action_dim), dtype=torch.float32, device=device)
         self.rewards = torch.zeros((buffer_size, num_envs), dtype=torch.float32, device=device)
         self.values = torch.zeros((buffer_size, num_envs), dtype=torch.float32, device=device)
         self.log_probs = torch.zeros((buffer_size, num_envs), dtype=torch.float32, device=device)
@@ -125,9 +121,7 @@ class RolloutBuffer:
         if z_t is not None:
             if self.latent_states is None:
                 self.latent_states = torch.zeros(
-                    (self.buffer_size, self.num_envs, z_t.shape[-1]),
-                    dtype=torch.float32,
-                    device=self.device,
+                    (self.buffer_size, self.num_envs, z_t.shape[-1]), dtype=torch.float32, device=self.device
                 )
             assert self.latent_states is not None  # for type checker
             self.latent_states[self.ptr] = z_t
@@ -135,9 +129,7 @@ class RolloutBuffer:
         if h_t is not None:
             if self.hidden_states is None:
                 self.hidden_states = torch.zeros(
-                    (self.buffer_size, self.num_envs, h_t.shape[-1]),
-                    dtype=torch.float32,
-                    device=self.device,
+                    (self.buffer_size, self.num_envs, h_t.shape[-1]), dtype=torch.float32, device=self.device
                 )
             assert self.hidden_states is not None  # for type checker
             self.hidden_states[self.ptr] = h_t
@@ -145,9 +137,7 @@ class RolloutBuffer:
         if z_next is not None:
             if self.next_latent_states is None:
                 self.next_latent_states = torch.zeros(
-                    (self.buffer_size, self.num_envs, z_next.shape[-1]),
-                    dtype=torch.float32,
-                    device=self.device,
+                    (self.buffer_size, self.num_envs, z_next.shape[-1]), dtype=torch.float32, device=self.device
                 )
             assert self.next_latent_states is not None  # for type checker
             self.next_latent_states[self.ptr] = z_next
@@ -180,11 +170,7 @@ class RolloutBuffer:
                 next_value = self.values[step + 1]
 
             # TD error: δ = r + γ * V(s') * (1-done) - V(s)
-            delta = (
-                self.rewards[step]
-                + self.gamma * next_value * next_non_terminal.float()
-                - self.values[step]
-            )
+            delta = self.rewards[step] + self.gamma * next_value * next_non_terminal.float() - self.values[step]
 
             # GAE: A = δ + γλ * (1-done) * A_{t+1}
             gae = delta + self.gamma * self.gae_lambda * next_non_terminal.float() * gae
@@ -193,9 +179,7 @@ class RolloutBuffer:
         # Returns = Advantages + Values
         self.returns = self.advantages + self.values
 
-    def get_batches(
-        self, batch_size: int, shuffle: bool = True
-    ) -> Generator[dict[str, torch.Tensor], None, None]:
+    def get_batches(self, batch_size: int, shuffle: bool = True) -> Generator[dict[str, torch.Tensor], None, None]:
         """
         Generate mini-batches for PPO update.
 

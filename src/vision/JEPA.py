@@ -54,9 +54,7 @@ class JEPAEncoder(nn.Module):
         super().__init__()
 
         self.encoder = nn.Sequential(
-            nn.Conv2d(
-                input_channels, hidden_dim, kernel_size=kernel_size, stride=stride, padding=1
-            ),
+            nn.Conv2d(input_channels, hidden_dim, kernel_size=kernel_size, stride=stride, padding=1),
             nn.ReLU(),
             nn.Conv2d(hidden_dim, hidden_dim, kernel_size=kernel_size, stride=stride, padding=1),
             ResidualBlock(hidden_dim),
@@ -192,13 +190,9 @@ class JEPA(VisionModel):
         for target_param, context_param in zip(
             self.target_encoder.parameters(), self.context_encoder.parameters(), strict=False
         ):
-            target_param.data.mul_(self.ema_decay).add_(
-                context_param.data, alpha=1 - self.ema_decay
-            )
+            target_param.data.mul_(self.ema_decay).add_(context_param.data, alpha=1 - self.ema_decay)
 
-    def _vicreg_loss(
-        self, z_pred: torch.Tensor, z_target: torch.Tensor
-    ) -> tuple[torch.Tensor, dict[str, float]]:
+    def _vicreg_loss(self, z_pred: torch.Tensor, z_target: torch.Tensor) -> tuple[torch.Tensor, dict[str, float]]:
         """
         Compute VICReg (Variance-Invariance-Covariance Regularization) loss.
 
@@ -251,11 +245,7 @@ class JEPA(VisionModel):
             cov_loss = torch.tensor(0.0, device=device)
 
         # Combined loss
-        loss = (
-            self.vicreg_sim_weight * sim_loss
-            + self.vicreg_var_weight * var_loss
-            + self.vicreg_cov_weight * cov_loss
-        )
+        loss = self.vicreg_sim_weight * sim_loss + self.vicreg_var_weight * var_loss + self.vicreg_cov_weight * cov_loss
 
         metrics = {
             "sim_loss": sim_loss.item(),
@@ -265,7 +255,7 @@ class JEPA(VisionModel):
 
         return loss, metrics
 
-    def forward(self, input: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, input: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Forward pass for training.
 
@@ -276,7 +266,8 @@ class JEPA(VisionModel):
             input: Input images (B, C, H, W)
 
         Returns:
-            z_pred: Predicted target embedding (for compatibility, not a reconstruction)
+            z_pred: Predicted target embedding (for compatibility, not a pixel reconstruction)
+            z_context: Context encoder output — the latent used downstream (B, embed_dim, H', W')
             loss: VICReg loss for training
         """
         # Encode with context encoder
@@ -296,9 +287,9 @@ class JEPA(VisionModel):
         if self.training:
             self._update_target_encoder()
 
-        # Return prediction as "reconstruction" for interface compatibility
-        # Note: This is NOT a pixel reconstruction - it's in latent space
-        return z_pred, loss
+        # Return prediction, context encoding, and loss
+        # z_context is the latent used for memory/controller; z_pred is in-latent-space "recon"
+        return z_pred, z_context, loss
 
     def encode(self, input: torch.Tensor, is_image_based: bool) -> torch.Tensor:
         """
