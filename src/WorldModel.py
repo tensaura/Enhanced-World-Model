@@ -65,11 +65,11 @@ class WorldModel(Model):
         vision_model: vision.VisionModel,
         memory_model: memory.MemoryModel,
         controller_model: controller.ControllerModel,
-        input_shape: tuple[int, ...],
-        vision_args: dict,
-        memory_args: dict,
-        controller_args: dict,
-    ) -> None:
+        input_shape,
+        vision_args,
+        memory_args,
+        controller_args,
+    ):
         super().__init__()
         self.iter_num = 0  # The number of training iterations tied to this model.
         self.nb_experiments = 0
@@ -87,14 +87,7 @@ class WorldModel(Model):
 
         self.a_prev = None
 
-    def forward(
-        self,
-        input: torch.Tensor,
-        action_space: Any,
-        is_image_based: bool,
-        return_losses: bool = False,
-        last_reward: torch.Tensor | None = None,
-    ) -> torch.Tensor | dict:
+    def forward(self, input, action_space, is_image_based, return_losses=False, last_reward=None):
         """
         Args:
             input: observation actuelle
@@ -139,6 +132,8 @@ class WorldModel(Model):
             self.a_prev = a_prev_onehot.detach()
 
             z_next_pred = self.memory.predict_next(z_t, self.a_prev, h_t)
+            if not return_losses:
+                return action
         else:
             # action is already tanh-squashed to [-1, 1] by the controller.
             # Keep it in tanh-space for PPO buffer / evaluate_actions consistency.
@@ -148,9 +143,8 @@ class WorldModel(Model):
             z_next_pred = self.memory.predict_next(z_t, action_tanh, h_t)
             action = action_tanh  # output dict uses tanh-space; action_env exposed separately
 
-        if not return_losses:
-            # Inference path: return env-ready action so env.step() gets correct values
-            return action_env if not isinstance(action_space, gym.spaces.Discrete) else action
+            if not return_losses:
+                return action_env
 
         # === LOSSES ===
         # Vision loss depends on model type
@@ -185,7 +179,7 @@ class WorldModel(Model):
 
         return outputs
 
-    def reset_env_memory(self, env_idx: int | torch.Tensor) -> None:
+    def reset_env_memory(self, env_idx):
         self.memory.reset_env_memory(env_idx)
         if self.a_prev is not None:
             self.a_prev[env_idx] = 0
@@ -202,7 +196,7 @@ class WorldModel(Model):
 
         return hyperparams_dict
 
-    def save(self, path: Path, obs_space: Any, action_space: Any) -> None:
+    def save(self, path, obs_space, action_space):
         saving_dict = {
             "iter_num": self.iter_num,
             "nb_experiments": self.nb_experiments,
@@ -221,12 +215,10 @@ class WorldModel(Model):
 
         torch.save(saving_dict, path)
 
-    def load(self, path: Path, obs_space: Any, action_space: Any, device: torch.device) -> None:
+    def load(self, path, obs_space, action_space, device):
         self.patch_load(path, "vmc", obs_space, action_space, device)
 
-    def patch_load(
-        self, patch_path: Path, patches: str, obs_space: Any, action_space: Any, device: torch.device
-    ) -> None:
+    def patch_load(self, patch_path, patches, obs_space, action_space, device) -> None:
         # TODO: Check input/output shape consistencies between components before loading the weights ?
         saved_dict = torch.load(patch_path, weights_only=False, map_location=device)
 
@@ -250,7 +242,7 @@ class WorldModel(Model):
             self.controller.load(saved_dict["controller_dict"])
 
 
-def render_first_env(envs: Any, title: str = "") -> None:
+def render_first_env(envs, title=""):
     import cv2
 
     frames = envs.render()
